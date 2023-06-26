@@ -1,0 +1,10 @@
+*.egg-info
+*.pyc
+/.idea/
+/data/
+/outputs/
+__pycache__
+/lightglue/weights/
+lightglue/_flash/
+*-checkpoint.ipynb
+*.pth
