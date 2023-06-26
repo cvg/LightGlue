@@ -87,7 +87,6 @@ If you use any ideas from the paper or code from this repo, please consider citi
                Marc Pollefeys},
   title     = {{LightGlue}: Local Feature Matching at Light Speed},
   booktitle = {ArXiv PrePrint},
-  year      = {2023},
-  url       = {psarlin.com/lightglue.pdf}
+  year      = {2023}
 }
 ```
