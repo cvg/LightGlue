@@ -76,6 +76,10 @@ LightGlue can adjust its depth (number of layers) and width (number of keypoints
 - [```flash```](https://github.com/cvg/LightGlue/blob/release/lightglue/lightglue.py#L262): Enable [FlashAttention](https://github.com/HazyResearch/flash-attention/tree/main). Significantly improves runtime and reduces memory consumption without any impact on accuracy, but requires either [FlashAttention](https://github.com/HazyResearch/flash-attention/tree/main) or ```torch >= 2.0```.
 
 
+## LightGlue in other frameworks
+- ONNX: [fabio-sim](https://github.com/fabio-sim) was blazing fast in implementing an ONNX-compatible version of LightGlue [here](https://github.com/fabio-sim/LightGlue-ONNX).
+
+
 ## BibTeX Citation
 If you use any ideas from the paper or code from this repo, please consider citing:
 
