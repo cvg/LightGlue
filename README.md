@@ -11,11 +11,11 @@
     <img src="assets/larchitecture.svg" alt="Logo" height="40">
 </p> -->
   <!-- <h2 align="center">PrePrint 2023</h2> -->
-  <h2><p align="center"><a href="https://psarlin.com/lightglue.pdf" align="center">Paper</a></p></h2>
+  <h2><p align="center"><a href="https://arxiv.org/pdf/2306.13643.pdf" align="center">Paper</a></p></h2>
   <div align="center"></div>
 </p>
 <p align="center">
-    <a href="https://psarlin.com/lightglue.pdf"><img src="assets/easy_hard.jpg" alt="Logo" width=80%></a>
+    <a href="https://arxiv.org/abs/2306.13643"><img src="assets/easy_hard.jpg" alt="Logo" width=80%></a>
     <br>
     <em>LightGlue is a Graph Neural Network for local feature matching that introspects its confidences to 1) stop early if all predictions are ready and 2) remove points deemed unmatchable to save compute.</em>
 </p>
@@ -26,7 +26,7 @@ This repository hosts the inference code for LightGlue, a lightweight feature ma
 
 We release pretrained weights of LightGlue with [SuperPoint](https://arxiv.org/abs/1712.07629) and [DISK](https://arxiv.org/abs/2006.13566) local features.
 
-The training code will be released in July in a separate repo (we will post an update here).
+The training end evaluation code will be released in July in a separate repo. If you wish to be notified, subscribe to [Issue #6](https://github.com/cvg/LightGlue/issues/6).
 
 ## Installation and Demo
 
@@ -43,7 +43,6 @@ Here is a minimal script to match two images:
 
 ```python
 from lightglue import LightGlue, SuperPoint, DISK
-from lightglue.superpoint import SuperPoint
 from lightglue.utils import load_image, match_pair
 
 # SuperPoint+LightGlue
@@ -69,7 +68,7 @@ m_kpts0, m_kpts1 = kpts0[matches[..., 0]], kpts1[matches[..., 1]]
 ## Tradeoff Speed vs. Accuracy
 LightGlue can adjust its depth (number of layers) and width (number of keypoints) per image pair, with a minimal impact on accuracy.
 <p align="center">
-  <a href="https://psarlin.com/lightglue.pdf"><img src="assets/teaser.svg" alt="Logo" width=50%></a>
+  <a href="https://arxiv.org/abs/2306.13643"><img src="assets/teaser.svg" alt="Logo" width=50%></a>
 </p>
 
 - [```depth_confidence```](https://github.com/cvg/LightGlue/blob/release/lightglue/lightglue.py#L265): Controls early stopping, improves run time. Recommended: 0.95. Default: -1 (off) 
