@@ -26,7 +26,7 @@ This repository hosts the inference code for LightGlue, a lightweight feature ma
 
 We release pretrained weights of LightGlue with [SuperPoint](https://arxiv.org/abs/1712.07629) and [DISK](https://arxiv.org/abs/2006.13566) local features.
 
-The training code will be released in July in a separate repo (we will post an update here).
+The training end evaluation code will be released in July in a separate repo. If you wish to be notified, subscribe to [Issue #6](https://github.com/cvg/LightGlue/issues/6).
 
 ## Installation and Demo
 
