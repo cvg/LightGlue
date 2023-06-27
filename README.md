@@ -43,7 +43,6 @@ Here is a minimal script to match two images:
 
 ```python
 from lightglue import LightGlue, SuperPoint, DISK
-from lightglue.superpoint import SuperPoint
 from lightglue.utils import load_image, match_pair
 
 # SuperPoint+LightGlue
