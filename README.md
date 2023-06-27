@@ -15,7 +15,7 @@
   <div align="center"></div>
 </p>
 <p align="center">
-    <a href="https://arxiv.org/pdf/2306.13643"><img src="assets/easy_hard.jpg" alt="Logo" width=80%></a>
+    <a href="https://arxiv.org/abs/2306.13643"><img src="assets/easy_hard.jpg" alt="Logo" width=80%></a>
     <br>
     <em>LightGlue is a Graph Neural Network for local feature matching that introspects its confidences to 1) stop early if all predictions are ready and 2) remove points deemed unmatchable to save compute.</em>
 </p>
@@ -68,7 +68,7 @@ m_kpts0, m_kpts1 = kpts0[matches[..., 0]], kpts1[matches[..., 1]]
 ## Tradeoff Speed vs. Accuracy
 LightGlue can adjust its depth (number of layers) and width (number of keypoints) per image pair, with a minimal impact on accuracy.
 <p align="center">
-  <a href="https://arxiv.org/pdf/2306.13643"><img src="assets/teaser.svg" alt="Logo" width=50%></a>
+  <a href="https://arxiv.org/abs/2306.13643"><img src="assets/teaser.svg" alt="Logo" width=50%></a>
 </p>
 
 - [```depth_confidence```](https://github.com/cvg/LightGlue/blob/release/lightglue/lightglue.py#L265): Controls early stopping, improves run time. Recommended: 0.95. Default: -1 (off) 
