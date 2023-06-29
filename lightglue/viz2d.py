@@ -9,6 +9,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 import numpy as np
+import torch
 
 
 def cm_RdGn(x):
@@ -31,6 +32,8 @@ def cm_BlRdGn(x_):
 
 def cm_prune(x_):
     """ Custom colormap to visualize pruning """
+    if isinstance(x_, torch.Tensor):
+        x_ = x_.cpu().numpy()
     max_i = max(x_)
     norm_x = np.where(x_ == max_i, -1, (x_-1) / 9)
     return cm_BlRdGn(norm_x)
@@ -59,7 +62,7 @@ def plot_images(imgs, titles=None, cmaps='gray', dpi=100, pad=.5,
     if n == 1:
         ax = [ax]
     for i in range(n):
-        ax[i].imshow(imgs[i], cmap=plt.get_cmap(cmaps[i]))
+        ax[i].imshow(imgs[i].cpu().numpy() if isinstance(imgs[i], torch.Tensor) else imgs[i], cmap=plt.get_cmap(cmaps[i]))
         ax[i].get_yaxis().set_ticks([])
         ax[i].get_xaxis().set_ticks([])
         ax[i].set_axis_off()
@@ -84,6 +87,8 @@ def plot_keypoints(kpts, colors='lime', ps=4, axes=None, a=1.0):
     if axes is None:
         axes = plt.gcf().axes
     for ax, k, c, alpha in zip(axes, kpts, colors, a):
+        if isinstance(k, torch.Tensor):
+            k = k.cpu().numpy()
         ax.scatter(k[:, 0], k[:, 1], c=c, s=ps, linewidths=0, alpha=alpha)
 
 
@@ -104,7 +109,10 @@ def plot_matches(kpts0, kpts1, color=None, lw=1.5, ps=4, a=1., labels=None,
         ax0, ax1 = ax[0], ax[1]
     else:
         ax0, ax1 = axes
-
+    if isinstance(kpts0, torch.Tensor):
+        kpts0 = kpts0.cpu().numpy()
+    if isinstance(kpts1, torch.Tensor):
+        kpts1 = kpts1.cpu().numpy()
     assert len(kpts0) == len(kpts1)
     if color is None:
         color = matplotlib.cm.hsv(np.random.rand(len(kpts0))).tolist()
