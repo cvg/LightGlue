@@ -40,7 +40,6 @@
 # --------------------------------------------------------------------*/
 # %BANNER_END%
 
-from pathlib import Path
 import torch
 from torch import nn
 
