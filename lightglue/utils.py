@@ -78,7 +78,6 @@ def match_pair(extractor, matcher, image0, image1, scales0=None, scales1=None, d
         torch.cuda.empty_cache()
 
     # create match indices
-    kpts0, kpts1 = pred['keypoints0'], pred['keypoints1']
     matches0, mscores0 = pred['matches0'], pred['matching_scores0']
     valid = matches0 > -1
     matches = torch.stack([torch.where(valid)[0], matches0[valid]], -1)
