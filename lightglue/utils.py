@@ -59,9 +59,8 @@ def load_image(path: Path, grayscale: bool = False, resize: int = None,
     return numpy_image_to_torch(img), torch.Tensor(scales)
 
 
-def match_pair(extractor, matcher, image0, image1, scales0=None, scales1=None):
-    device = image0.device
-    data = {'image0': image0[None].cuda(), 'image1': image1[None].cuda()}
+def match_pair(extractor, matcher, image0, image1, scales0=None, scales1=None, device=None):
+    data = {'image0': image0[None], 'image1': image1[None]}
     img0, img1 = data['image0'], data['image1']
     feats0, feats1 = extractor({'image': img0}), extractor({'image': img1})
     pred = {**{k+'0': v for k, v in feats0.items()},
@@ -75,7 +74,8 @@ def match_pair(extractor, matcher, image0, image1, scales0=None, scales1=None):
     if scales1 is not None:
         pred['keypoints1'] = (pred['keypoints1'] + 0.5) / scales1[None] - 0.5
     del feats0, feats1
-    torch.cuda.empty_cache()
+    if 'cuda' in str(device):
+        torch.cuda.empty_cache()
 
     # create match indices
     kpts0, kpts1 = pred['keypoints0'], pred['keypoints1']
