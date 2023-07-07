@@ -9,9 +9,13 @@ from typing import Optional, List, Callable
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
-    FOUND_OFFICIAL_FLASH = True
 except ModuleNotFoundError:
-    FOUND_OFFICIAL_FLASH = False
+    FlashCrossAttention = None
+
+if FlashCrossAttention or hasattr(F, 'scaled_dot_product_attention'):
+    FLASH_AVAILABLE = True
+else:
+    FLASH_AVAILABLE = False
 
 torch.backends.cudnn.deterministic = True
 
@@ -76,35 +80,37 @@ class TokenConfidence(nn.Module):
             self.token(desc1.detach().float()).squeeze(-1))
 
 
-class FastAttention(nn.Module):
-    def __init__(self, dim: int) -> None:
+class Attention(nn.Module):
+    def __init__(self, allow_flash: bool) -> None:
         super().__init__()
-        self.s = dim ** -0.5
+        if allow_flash and not FLASH_AVAILABLE:
+            raise UserWarning(
+                'FlashAttention requested but not available in your '
+                'environment.\n'
+                'Consider installing torch >= 2.0 or flash_attn for '
+                'improved run time.'
+            )
+        self.enable_flash = allow_flash and FLASH_AVAILABLE
+        if allow_flash and FlashCrossAttention:
+            self.flash_ = FlashCrossAttention()
 
     def forward(self, q, k, v) -> torch.Tensor:
-        if hasattr(F, 'scaled_dot_product_attention'):
-            q, k, v = [x.contiguous() for x in [q, k, v]]
-            return F.scaled_dot_product_attention(q, k, v)
+        if self.enable_flash and q.device.type == 'cuda':
+            if FlashCrossAttention:
+                q, k, v = [x.transpose(-2, -3) for x in [q, k, v]]
+                m = self.flash_(q.half(), torch.stack([k, v], 2).half())
+                return m.transpose(-2, -3).to(q.dtype)
+            else:  # use torch 2.0 scaled_dot_product_attention with flash
+                args = [x.half().contiguous() for x in [q, k, v]]
+                with torch.backends.cuda.sdp_kernel(enable_flash=True):
+                    return F.scaled_dot_product_attention(*args).to(q.dtype)
+        elif hasattr(F, 'scaled_dot_product_attention'):
+            args = [x.contiguous() for x in [q, k, v]]
+            return F.scaled_dot_product_attention(*args).to(q.dtype)
         else:
-            s = self.s
+            s = q.shape[-1] ** -0.5
             attn = F.softmax(torch.einsum('...id,...jd->...ij', q, k) * s, -1)
             return torch.einsum('...ij,...jd->...id', attn, v)
-
-
-class FlashAttention(nn.Module):
-    def __init__(self, *args) -> None:
-        super().__init__()
-        if FOUND_OFFICIAL_FLASH:
-            self.flash = FlashCrossAttention()
-
-    def forward(self, q, k, v) -> torch.Tensor:
-        if FOUND_OFFICIAL_FLASH:
-            q, k, v = [x.transpose(-2, -3) for x in [q, k, v]]
-            m = self.flash(q.half(), torch.stack([k, v], 2).half())
-            return m.transpose(-2, -3).to(q.dtype)
-        else:
-            args = [x.half().contiguous() for x in [q, k, v]]
-            return F.scaled_dot_product_attention(*args).to(q.dtype)
 
 
 class Transformer(nn.Module):
@@ -116,8 +122,7 @@ class Transformer(nn.Module):
         assert self.embed_dim % num_heads == 0
         self.head_dim = self.embed_dim // num_heads
         self.Wqkv = nn.Linear(embed_dim, 3*embed_dim, bias=bias)
-        attn = FlashAttention if flash else FastAttention
-        self.inner_attn = attn(self.head_dim)
+        self.inner_attn = Attention(flash)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.ffn = nn.Sequential(
             nn.Linear(2*embed_dim, 2*embed_dim),
@@ -161,8 +166,8 @@ class CrossTransformer(nn.Module):
             nn.Linear(2*embed_dim, embed_dim)
         )
 
-        if flash:
-            self.flash = FastAttention(dim_head)
+        if flash and FLASH_AVAILABLE:
+            self.flash = Attention(True)
         else:
             self.flash = None
 
@@ -259,7 +264,7 @@ class LightGlue(nn.Module):
         'descriptor_dim': 256,
         'n_layers': 9,
         'num_heads': 4,
-        'flash': False,  # enable FlashAttention
+        'flash': True,  # enable FlashAttention if available.
         'mp': False,  # enable mixed precision
         'filter_threshold': 0.1,  # match threshold
         'depth_confidence': -1,  # -1 is no early stopping, recommend: 0.95
@@ -269,7 +274,7 @@ class LightGlue(nn.Module):
 
     required_data_keys = [
         'keypoints0', 'keypoints1', 'descriptors0', 'descriptors1']
-    
+
     version = "v0.1_arxiv"
     url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 
@@ -286,7 +291,7 @@ class LightGlue(nn.Module):
             self.conf['weights'], self.conf['input_dim'] = \
                 self.pretrained[pretrained]
         self.conf = conf = SimpleNamespace(**self.conf)
-            
+
         if conf.input_dim != conf.descriptor_dim:
             self.input_proj = nn.Linear(
                 conf.input_dim, conf.descriptor_dim, bias=True)
@@ -353,8 +358,8 @@ class LightGlue(nn.Module):
         desc0 = data['descriptors0'].detach()
         desc1 = data['descriptors1'].detach()
 
-        assert(desc0.shape[-1] == self.conf.input_dim)
-        assert(desc1.shape[-1] == self.conf.input_dim)
+        assert desc0.shape[-1] == self.conf.input_dim
+        assert desc1.shape[-1] == self.conf.input_dim
 
         if torch.is_autocast_enabled():
             desc0 = desc0.half()
