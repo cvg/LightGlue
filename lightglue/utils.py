@@ -2,7 +2,35 @@ from pathlib import Path
 import torch
 import cv2
 import numpy as np
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Callable
+import collections.abc as collections
+
+
+def map_tensor(input_, func: Callable):
+    string_classes = (str, bytes)
+    if isinstance(input_, string_classes):
+        return input_
+    elif isinstance(input_, collections.Mapping):
+        return {k: map_tensor(sample, func) for k, sample in input_.items()}
+    elif isinstance(input_, collections.Sequence):
+        return [map_tensor(sample, func) for sample in input_]
+    elif isinstance(input_, torch.Tensor):
+        return func(input_)
+    else:
+        return input_
+
+
+def batch_to_device(batch: dict, device: str = 'cpu',
+                    non_blocking: bool = True):
+    def _func(tensor):
+        return tensor.to(device=device, non_blocking=non_blocking).detach()
+    return map_tensor(batch, _func)
+
+
+def rbd(data: dict) -> dict:
+    """Remove batch dimension from elements in data"""
+    return {k: v[0] if isinstance(v, (torch.Tensor, np.ndarray, list)) else v
+            for k, v in data.items()}
 
 
 def read_image(path: Path, grayscale: bool = False) -> np.ndarray:
@@ -59,26 +87,17 @@ def load_image(path: Path, grayscale: bool = False, resize: int = None,
     return numpy_image_to_torch(img), torch.Tensor(scales)
 
 
-def match_pair(extractor, matcher, image0, image1, scales0=None, scales1=None, device=None):
-    data = {'image0': image0[None], 'image1': image1[None]}
-    img0, img1 = data['image0'], data['image1']
-    feats0, feats1 = extractor({'image': img0}), extractor({'image': img1})
-    pred = {**{k+'0': v for k, v in feats0.items()},
-            **{k+'1': v for k, v in feats1.items()},
-            **data}
-    pred = {**pred, **matcher(pred)}
-    pred = {k: v.to(device).detach()[0] if
-            isinstance(v, torch.Tensor) else v for k, v in pred.items()}
+def match_pair(extractor, matcher, image0, image1, scales0=None, scales1=None):
+    """Match a pair of images (image0, image1) with an extractor and matcher"""
+    data0, data1 = {'image': image0[None]}, {'image': image1[None]}
+    feats0, feats1 = extractor(data0), extractor(data1)
+    data = {'image0': {**feats0, **data0}, 'image1': {**feats1, **data1}}
+    matches01 = batch_to_device(matcher(data))
+    feats0, feats1 = batch_to_device(feats0), batch_to_device(feats1)
+    # remove batch dim
+    feats0, feats1, matches01 = [rbd(x) for x in [feats0, feats1, matches01]]
     if scales0 is not None:
-        pred['keypoints0'] = (pred['keypoints0'] + 0.5) / scales0[None] - 0.5
+        feats0['keypoints'] = (feats0['keypoints'] + .5) / scales0[None] - .5
     if scales1 is not None:
-        pred['keypoints1'] = (pred['keypoints1'] + 0.5) / scales1[None] - 0.5
-    del feats0, feats1
-    if 'cuda' in str(device):
-        torch.cuda.empty_cache()
-
-    # create match indices
-    matches0, mscores0 = pred['matches0'], pred['matching_scores0']
-    valid = matches0 > -1
-    matches = torch.stack([torch.where(valid)[0], matches0[valid]], -1)
-    return {**pred, 'matches': matches, 'matching_scores': mscores0[valid]}
+        feats1['keypoints'] = (feats1['keypoints'] + .5) / scales1[None] - .5
+    return feats0, feats1, matches01

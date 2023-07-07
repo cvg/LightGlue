@@ -273,7 +273,7 @@ class LightGlue(nn.Module):
     }
 
     required_data_keys = [
-        'keypoints0', 'keypoints1', 'descriptors0', 'descriptors1']
+        'image0', 'image1']
 
     version = "v0.1_arxiv"
     url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
@@ -343,20 +343,21 @@ class LightGlue(nn.Module):
     def _forward(self, data: dict) -> dict:
         for key in self.required_data_keys:
             assert key in data, f'Missing key {key} in data'
-        kpts0_, kpts1_ = data['keypoints0'], data['keypoints1']
+        data0, data1 = data['image0'], data['image1']
+        kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
         b, m, _ = kpts0_.shape
         b, n, _ = kpts1_.shape
 
         kpts0 = normalize_keypoints(
-            kpts0_, size=data.get('image_size0'), shape=data['image0'].shape)
+            kpts0_, size=data0.get('image_size'), shape=data0['image'].shape)
         kpts1 = normalize_keypoints(
-            kpts1_, size=data.get('image_size1'), shape=data['image1'].shape)
+            kpts1_, size=data1.get('image_size'), shape=data1['image'].shape)
 
         assert torch.all(kpts0 >= -1) and torch.all(kpts0 <= 1)
         assert torch.all(kpts1 >= -1) and torch.all(kpts1 <= 1)
 
-        desc0 = data['descriptors0'].detach()
-        desc1 = data['descriptors1'].detach()
+        desc0 = data0['descriptors'].detach()
+        desc1 = data1['descriptors'].detach()
 
         assert desc0.shape[-1] == self.conf.input_dim
         assert desc1.shape[-1] == self.conf.input_dim
@@ -417,6 +418,12 @@ class LightGlue(nn.Module):
 
         m0, m1, mscores0, mscores1 = filter_matches(
             scores, self.conf.filter_threshold)
+        
+        matches, mscores = [], []
+        for k in range(b):
+            valid = m0[k] > -1
+            matches.append(torch.stack([torch.where(valid)[0], m0[k][valid]], -1))
+            mscores.append(mscores0[k][valid])
 
         return {
             'log_assignment': scores,
@@ -427,6 +434,8 @@ class LightGlue(nn.Module):
             'stop': i+1,
             'prune0': prune0,
             'prune1': prune1,
+            'matches': matches,
+            'scores': mscores,
         }
 
     def conf_th(self, i: int) -> float:
