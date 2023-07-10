@@ -262,9 +262,9 @@ class LightGlue(nn.Module):
         'num_heads': 4,
         'flash': True,  # enable FlashAttention if available.
         'mp': False,  # enable mixed precision
-        'filter_threshold': 0.1,  # match threshold
         'depth_confidence': -1,  # -1 is no early stopping, recommend: 0.95
         'width_confidence': -1,  # -1 is no point pruning, recommend: 0.99
+        'filter_threshold': 0.1,  # match threshold
         'weights': None,
     }
 
