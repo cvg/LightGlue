@@ -40,6 +40,8 @@
 # --------------------------------------------------------------------*/
 # %BANNER_END%
 
+# Adapted by Remi Pautrat, Philipp Lindenberger
+
 import torch
 from torch import nn
 from .utils import ImagePreprocessor
@@ -63,18 +65,10 @@ def simple_nms(scores, nms_radius: int):
     return torch.where(max_mask, scores, zeros)
 
 
-def remove_borders(keypoints, scores, border: int, height: int, width: int):
-    """ Removes keypoints too close to the border """
-    mask_h = (keypoints[:, 0] >= border) & (keypoints[:, 0] < (height - border))
-    mask_w = (keypoints[:, 1] >= border) & (keypoints[:, 1] < (width - border))
-    mask = mask_h & mask_w
-    return keypoints[mask], scores[mask]
-
-
-def top_k_keypoints(keypoints, scores, k: int):
+def top_k_keypoints(keypoints, scores, k):
     if k >= len(keypoints):
         return keypoints, scores
-    scores, indices = torch.topk(scores, k, dim=0)
+    scores, indices = torch.topk(scores, k, dim=0, sorted=True)
     return keypoints[indices], scores
 
 
@@ -119,7 +113,7 @@ class SuperPoint(nn.Module):
 
     def __init__(self, **conf):
         super().__init__()
-        self.config = {**self.default_conf, **conf}
+        self.conf = {**self.default_conf, **conf}
 
         self.relu = nn.ReLU(inplace=True)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -139,13 +133,13 @@ class SuperPoint(nn.Module):
 
         self.convDa = nn.Conv2d(c4, c5, kernel_size=3, stride=1, padding=1)
         self.convDb = nn.Conv2d(
-            c5, self.config['descriptor_dim'],
+            c5, self.conf['descriptor_dim'],
             kernel_size=1, stride=1, padding=0)
 
         url = "https://github.com/cvg/LightGlue/releases/download/v0.1_arxiv/superpoint_v1.pth"
         self.load_state_dict(torch.hub.load_state_dict_from_url(url))
 
-        mk = self.config['max_num_keypoints']
+        mk = self.conf['max_num_keypoints']
         if mk == 0 or mk < -1:
             raise ValueError('\"max_num_keypoints\" must be positive or \"-1\"')
 
@@ -179,23 +173,29 @@ class SuperPoint(nn.Module):
         b, _, h, w = scores.shape
         scores = scores.permute(0, 2, 3, 1).reshape(b, h, w, 8, 8)
         scores = scores.permute(0, 1, 3, 2, 4).reshape(b, h*8, w*8)
-        scores = simple_nms(scores, self.config['nms_radius'])
-
-        # Extract keypoints
-        keypoints = [
-            torch.nonzero(s > self.config['detection_threshold'])
-            for s in scores]
-        scores = [s[tuple(k.t())] for s, k in zip(scores, keypoints)]
+        scores = simple_nms(scores, self.conf['nms_radius'])
 
         # Discard keypoints near the image borders
-        keypoints, scores = list(zip(*[
-            remove_borders(k, s, self.config['remove_borders'], h*8, w*8)
-            for k, s in zip(keypoints, scores)]))
+        if self.conf['remove_borders']:
+            pad = self.conf['remove_borders']
+            scores[:, :pad] = -1
+            scores[:, :, :pad] = -1
+            scores[:, -pad:] = -1
+            scores[:, :, -pad:] = -1
+
+        # Extract keypoints
+        best_kp = torch.where(scores > self.conf['detection_threshold'])
+        scores = scores[best_kp]
+
+        # Separate into batches
+        keypoints = [torch.stack(best_kp[1:3], dim=-1)[best_kp[0] == i]
+                     for i in range(b)]
+        scores = [scores[best_kp[0] == i] for i in range(b)]
 
         # Keep the k keypoints with highest score
-        if self.config['max_num_keypoints'] >= 0:
+        if self.conf['max_num_keypoints'] >= 0:
             keypoints, scores = list(zip(*[
-                top_k_keypoints(k, s, self.config['max_num_keypoints'])
+                top_k_keypoints(k, s, self.conf['max_num_keypoints'])
                 for k, s in zip(keypoints, scores)]))
 
         # Convert (h, w) to (x, y)
