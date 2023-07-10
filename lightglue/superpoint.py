@@ -42,6 +42,7 @@
 
 import torch
 from torch import nn
+from .utils import ImagePreprocessor
 
 
 def simple_nms(scores, nms_radius: int):
@@ -100,7 +101,7 @@ class SuperPoint(nn.Module):
     Rabinovich. In CVPRW, 2019. https://arxiv.org/abs/1712.07629
 
     """
-    default_config = {
+    default_conf = {
         'descriptor_dim': 256,
         'nms_radius': 4,
         'max_num_keypoints': -1,
@@ -108,9 +109,17 @@ class SuperPoint(nn.Module):
         'remove_borders': 4,
     }
 
+    preprocess_conf = {
+        **ImagePreprocessor.default_conf,
+        'resize': 1024,
+        'grayscale': True,
+    }
+
+    required_data_keys = ['image']
+
     def __init__(self, **conf):
         super().__init__()
-        self.config = {**self.default_config, **conf}
+        self.config = {**self.default_conf, **conf}
 
         self.relu = nn.ReLU(inplace=True)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -144,6 +153,8 @@ class SuperPoint(nn.Module):
 
     def forward(self, data: dict) -> dict:
         """ Compute keypoints, scores, descriptors for image """
+        for key in self.required_data_keys:
+            assert key in data, f'Missing key {key} in data'
         image = data['image']
         if image.shape[1] == 3:  # RGB
             scale = image.new_tensor([0.299, 0.587, 0.114]).view(1, 3, 1, 1)
@@ -204,3 +215,15 @@ class SuperPoint(nn.Module):
             'keypoint_scores': torch.stack(scores, 0),
             'descriptors': torch.stack(descriptors, 0).transpose(-1, -2),
         }
+
+    def extract(self, img: torch.Tensor, **conf) -> dict:
+        """ Perform extraction with online resizing"""
+        if img.dim() == 3:
+            img = img[None]  # add batch dim
+        assert img.dim() == 4 and img.shape[0] == 1
+        shape = img.shape[-1], img.shape[-2]
+        img, scales = ImagePreprocessor(**self.preprocess_conf, **conf)(img)
+        feats = self.forward({'image': img})
+        feats['image_size'] = torch.Tensor(shape)[None].to(img).float()
+        feats['keypoints'] = (feats['keypoints'] + .5) / scales[None] - .5
+        return feats

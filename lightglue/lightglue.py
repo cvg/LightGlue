@@ -23,13 +23,9 @@ torch.backends.cudnn.deterministic = True
 @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
 def normalize_keypoints(
         kpts: torch.Tensor,
-        size: Optional[List[int]] = None,
-        shape: Optional[List[int]] = None) -> torch.Tensor:
-    if size is None:
-        assert shape is not None
-        _, _, h, w = shape
-        one = kpts.new_tensor(1)
-        size = torch.stack([one*w, one*h])[None]
+        size: torch.Tensor) -> torch.Tensor:
+    if size.dim() == 1:
+        size = size[None]
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
     kpts = (kpts - shift[:, None]) / scale[:, None, None]
@@ -329,13 +325,21 @@ class LightGlue(nn.Module):
         Match keypoints and descriptors between two images
 
         Input (dict):
-            keypoints0: [B x M x 2], descriptors0: [B x M x D]
-            keypoints1: [B x N x 2], descriptors1: [B x N x D]
-
+            image0: dict
+                keypoints: [B x M x 2]
+                descriptors: [B x M x D]
+                image: [B x C x H x W] or image_size: [B x 2]
+            image1: dict
+                keypoints: [B x N x 2]
+                descriptors: [B x N x D]
+                image: [B x C x H x W] or image_size: [B x 2]
         Output (dict):
-            matches0: [B x M], matching_scores0: [B x M]
-            matches1: [B x N], matching_scores1: [B x N]
             log_assignment: [B x M+1 x N+1]
+            matches0: [B x M]
+            matching_scores0: [B x M]
+            matches1: [B x N]
+            matching_scores1: [B x N]
+            matches: List[[Si x 2]], scores: List[[Si]]
         """
         with torch.autocast(enabled=self.conf.mp, device_type='cuda'):
             return self._forward(data)
@@ -347,11 +351,11 @@ class LightGlue(nn.Module):
         kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
         b, m, _ = kpts0_.shape
         b, n, _ = kpts1_.shape
-
-        kpts0 = normalize_keypoints(
-            kpts0_, size=data0.get('image_size'), shape=data0['image'].shape)
-        kpts1 = normalize_keypoints(
-            kpts1_, size=data1.get('image_size'), shape=data1['image'].shape)
+        size0, size1 = data0.get('image_size'), data1.get('image_size')
+        size0 = size0 if size0 is not None else data0['image'].shape[-2:][::-1]
+        size1 = size1 if size1 is not None else data1['image'].shape[-2:][::-1]
+        kpts0 = normalize_keypoints(kpts0_, size=size0)
+        kpts1 = normalize_keypoints(kpts1_, size=size1)
 
         assert torch.all(kpts0 >= -1) and torch.all(kpts0 <= 1)
         assert torch.all(kpts1 >= -1) and torch.all(kpts1 <= 1)
@@ -418,7 +422,7 @@ class LightGlue(nn.Module):
 
         m0, m1, mscores0, mscores1 = filter_matches(
             scores, self.conf.filter_threshold)
-        
+
         matches, mscores = [], []
         for k in range(b):
             valid = m0[k] > -1

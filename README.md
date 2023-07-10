@@ -43,7 +43,7 @@ Here is a minimal script to match two images:
 
 ```python
 from lightglue import LightGlue, SuperPoint, DISK
-from lightglue.utils import load_image, match_pair
+from lightglue.utils import load_image, rbd
 
 # SuperPoint+LightGlue
 extractor = SuperPoint(max_num_keypoints=2048).eval().cuda()  # load the extractor
@@ -53,18 +53,26 @@ matcher = LightGlue(pretrained='superpoint').eval().cuda()  # load the matcher
 extractor = DISK(max_num_keypoints=2048).eval().cuda()  # load the extractor
 matcher = LightGlue(pretrained='disk').eval().cuda()  # load the matcher
 
-# load images to torch and resize to max_edge=1024
-image0, scales0 = load_image(path_to_image_0, resize=1024)
-image1, scales1 = load_image(path_to_image_1, resize=1024)
+# load images to torch
+image0, scales0 = load_image(path_to_image_0)
+image1, scales1 = load_image(path_to_image_1)
 
-# extraction + matching + rescale keypoints to original image size
-pred = match_pair(extractor, matcher, image0, image1,
-                  scales0=scales0, scales1=scales1)    
+# extraction + matching (with online resizing)
+feats0 = extractor.extract(image0.cuda())  # disable online resizing with resize=None
+feats1 = extractor.extract(image1.cuda())
+matches01 = matcher({'image0': feats0, 'image1': feats1})
+feats0, feats1, matches01 = [rbd(x) for x in [feats0, feats1, matches01]]  # remove batch dim (rbd)
 
-kpts0, kpts1, matches = pred['keypoints0'], pred['keypoints1'], pred['matches']
+kpts0, kpts1, matches = feats0['keypoints'], feats1['keypoints'], matches01['matches']
 m_kpts0, m_kpts1 = kpts0[matches[..., 0]], kpts1[matches[..., 1]]
 ```
 
+We also provide a convenience method to match a pair of images:
+
+```
+from lightglue import match_pair
+feats0, feats1, matches01 = match_pair(extractor, matcher, image0, image1)
+```
 ## Tradeoff Speed vs. Accuracy
 LightGlue can adjust its depth (number of layers) and width (number of keypoints) per image pair, with a minimal impact on accuracy.
 <p align="center">

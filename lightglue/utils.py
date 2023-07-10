@@ -1,9 +1,40 @@
 from pathlib import Path
 import torch
+import kornia
 import cv2
 import numpy as np
-from typing import Union, List, Optional, Callable
+from typing import Union, List, Optional, Callable, Tuple
 import collections.abc as collections
+from types import SimpleNamespace
+
+
+class ImagePreprocessor:
+    default_conf = {
+        'resize': None,  # target edge length, None for no resizing
+        'side': 'long',
+        'interpolation': 'bilinear',
+        'align_corners': None,
+        'antialias': True,
+        'grayscale': False,  # convert rgb to grayscale
+    }
+
+    def __init__(self, **conf) -> None:
+        super().__init__()
+        self.conf = {**self.default_conf, **conf}
+        self.conf = conf = SimpleNamespace(**self.conf)
+
+    def __call__(self, img: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Resize and preprocess an image, return image and resize scale"""
+        h, w = img.shape[-2:]
+        if self.conf.resize is not None:
+            img = kornia.geometry.transform.resize(
+                img, self.conf.resize, side=self.conf.side,
+                antialias=self.conf.antialias,
+                align_corners=self.conf.align_corners)
+        scale = torch.Tensor([img.shape[-1] / w, img.shape[-2] / h]).to(img)
+        if self.conf.grayscale:
+            img = kornia.color.rgb_to_grayscale(img)
+        return img, scale
 
 
 def map_tensor(input_, func: Callable):
@@ -22,6 +53,7 @@ def map_tensor(input_, func: Callable):
 
 def batch_to_device(batch: dict, device: str = 'cpu',
                     non_blocking: bool = True):
+    """Move batch (dict) to device"""
     def _func(tensor):
         return tensor.to(device=device, non_blocking=non_blocking).detach()
     return map_tensor(batch, _func)
@@ -87,17 +119,15 @@ def load_image(path: Path, grayscale: bool = False, resize: int = None,
     return numpy_image_to_torch(img), torch.Tensor(scales)
 
 
-def match_pair(extractor, matcher, image0, image1, scales0=None, scales1=None):
+def match_pair(extractor, matcher,
+               image0: torch.Tensor, image1: torch.Tensor,
+               resize: Optional[int] = 1024,
+               device: str = 'cpu'):
     """Match a pair of images (image0, image1) with an extractor and matcher"""
-    data0, data1 = {'image': image0[None]}, {'image': image1[None]}
-    feats0, feats1 = extractor(data0), extractor(data1)
-    data = {'image0': {**feats0, **data0}, 'image1': {**feats1, **data1}}
-    matches01 = batch_to_device(matcher(data))
-    feats0, feats1 = batch_to_device(feats0), batch_to_device(feats1)
-    # remove batch dim
-    feats0, feats1, matches01 = [rbd(x) for x in [feats0, feats1, matches01]]
-    if scales0 is not None:
-        feats0['keypoints'] = (feats0['keypoints'] + .5) / scales0[None] - .5
-    if scales1 is not None:
-        feats1['keypoints'] = (feats1['keypoints'] + .5) / scales1[None] - .5
+    feats0 = extractor.extract(image0, resize=resize)
+    feats1 = extractor.extract(image1, resize=resize)
+    matches01 = matcher({'image0': feats0, 'image1': feats1})
+    data = [feats0, feats1, matches01]
+    # remove batch dim and move to target device
+    feats0, feats1, matches01 = [batch_to_device(rbd(x), device) for x in data]
     return feats0, feats1, matches01

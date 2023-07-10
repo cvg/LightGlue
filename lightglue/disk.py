@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import kornia
 from types import SimpleNamespace
+from .utils import ImagePreprocessor
 
 
 class DISK(nn.Module):
@@ -13,6 +14,13 @@ class DISK(nn.Module):
         'detection_threshold': 0.0,
         'pad_if_not_divisible': True,
     }
+
+    preprocess_conf = {
+        **ImagePreprocessor.default_conf,
+        'resize': 1024,
+        'grayscale': False,
+    }
+
     required_data_keys = ['image']
 
     def __init__(self, **conf) -> None:
@@ -22,8 +30,10 @@ class DISK(nn.Module):
         self.model = kornia.feature.DISK.from_pretrained(self.conf.weights)
 
     def forward(self, data: dict) -> dict:
+        """ Compute keypoints, scores, descriptors for image """
+        for key in self.required_data_keys:
+            assert key in data, f'Missing key {key} in data'
         image = data['image']
-
         features = self.model(
             image,
             n=self.conf.max_num_keypoints,
@@ -45,3 +55,15 @@ class DISK(nn.Module):
             'keypoint_scores': scores.to(image),
             'descriptors': descriptors.to(image),
         }
+
+    def extract(self, img: torch.Tensor, **conf) -> dict:
+        """ Perform extraction with online resizing"""
+        if img.dim() == 3:
+            img = img[None]  # add batch dim
+        assert img.dim() == 4 and img.shape[0] == 1
+        shape = img.shape[-1], img.shape[-2]
+        img, scales = ImagePreprocessor(**self.preprocess_conf, **conf)(img)
+        feats = self.forward({'image': img})
+        feats['image_size'] = torch.Tensor(shape)[None].to(img).float()
+        feats['keypoints'] = (feats['keypoints'] + .5) / scales[None] - .5
+        return feats
