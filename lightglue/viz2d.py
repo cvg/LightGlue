@@ -43,11 +43,16 @@ def plot_images(imgs, titles=None, cmaps='gray', dpi=100, pad=.5,
                 adaptive=True):
     """Plot a set of images horizontally.
     Args:
-        imgs: a list of NumPy or PyTorch images, RGB (H, W, 3) or mono (H, W).
+        imgs: list of NumPy RGB (H, W, 3) or PyTorch RGB (3, H, W) or mono (H, W).
         titles: a list of strings, as titles for each image.
         cmaps: colormaps for monochrome images.
         adaptive: whether the figure size should fit the image aspect ratios.
     """
+    # conversion to (H, W, 3) for torch.Tensor
+    imgs = [img.permute(1, 2, 0).cpu().numpy()
+            if (isinstance(img, torch.Tensor) and img.dim() == 3) else img
+            for img in imgs]
+
     n = len(imgs)
     if not isinstance(cmaps, (list, tuple)):
         cmaps = [cmaps] * n
@@ -62,8 +67,7 @@ def plot_images(imgs, titles=None, cmaps='gray', dpi=100, pad=.5,
     if n == 1:
         ax = [ax]
     for i in range(n):
-        ax[i].imshow(imgs[i].cpu().numpy() if isinstance(imgs[i], torch.Tensor)
-                     else imgs[i], cmap=plt.get_cmap(cmaps[i]))
+        ax[i].imshow(imgs[i], cmap=plt.get_cmap(cmaps[i]))
         ax[i].get_yaxis().set_ticks([])
         ax[i].get_xaxis().set_ticks([])
         ax[i].set_axis_off()
