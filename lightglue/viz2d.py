@@ -62,7 +62,8 @@ def plot_images(imgs, titles=None, cmaps='gray', dpi=100, pad=.5,
     if n == 1:
         ax = [ax]
     for i in range(n):
-        ax[i].imshow(imgs[i].cpu().numpy() if isinstance(imgs[i], torch.Tensor) else imgs[i], cmap=plt.get_cmap(cmaps[i]))
+        ax[i].imshow(imgs[i].cpu().numpy() if isinstance(imgs[i], torch.Tensor)
+                     else imgs[i], cmap=plt.get_cmap(cmaps[i]))
         ax[i].get_yaxis().set_ticks([])
         ax[i].get_xaxis().set_ticks([])
         ax[i].set_axis_off()
@@ -121,15 +122,15 @@ def plot_matches(kpts0, kpts1, color=None, lw=1.5, ps=4, a=1., labels=None,
 
     if lw > 0:
         for i in range(len(kpts0)):
-            l = matplotlib.patches.ConnectionPatch(
+            line = matplotlib.patches.ConnectionPatch(
                 xyA=(kpts0[i, 0], kpts0[i, 1]), xyB=(kpts1[i, 0], kpts1[i, 1]),
                 coordsA=ax0.transData, coordsB=ax1.transData,
                 axesA=ax0, axesB=ax1,
                 zorder=1, color=color[i], linewidth=lw, clip_on=True,
                 alpha=a, label=None if labels is None else labels[i],
                 picker=5.0)
-            l.set_annotation_clip(True)
-            fig.add_artist(l)
+            line.set_annotation_clip(True)
+            fig.add_artist(line)
 
     # freeze the axes to prevent the transform to change
     ax0.autoscale(enable=False)
