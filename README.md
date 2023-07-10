@@ -69,20 +69,35 @@ m_kpts0, m_kpts1 = kpts0[matches[..., 0]], kpts1[matches[..., 1]]
 
 We also provide a convenience method to match a pair of images:
 
-```
+```python
 from lightglue import match_pair
 feats0, feats1, matches01 = match_pair(extractor, matcher, image0, image1)
 ```
-## Tradeoff Speed vs. Accuracy
+## Advanced configuration of LightGlue
 LightGlue can adjust its depth (number of layers) and width (number of keypoints) per image pair, with a minimal impact on accuracy.
 <p align="center">
   <a href="https://arxiv.org/abs/2306.13643"><img src="assets/teaser.svg" alt="Logo" width=50%></a>
 </p>
 
+To activate adaptive LightGlue, provide the following parameters:
+
+```python
+extractor = SuperPoint(max_num_keypoints=2048).eval().cuda()
+matcher = LightGlue(features='superpoint', depth_confidence=0.95, width_confidence=0.99).eval().cuda()
+```
+Here is an explanation of all LightGlue configuration entries that can be changed:
+
+<details>
+<summary>[Click to expand]</summary>
+
+- [```n_layers```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L261): Number of stacked self+cross attention layers. Reduce this value for faster inference at the cost of accuracy (continuous red line in the plot above). Default: 9 (= all layers).
+- [```flash```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L263): Enable [FlashAttention](https://github.com/HazyResearch/flash-attention/tree/main). Significantly improves runtime and reduces memory consumption without any impact on accuracy, but requires either [FlashAttention](https://github.com/HazyResearch/flash-attention/tree/main) or ```torch >= 2.0```, and CUDA. Default: True (LightGlue automatically detects if FlashAttention is available in your environment)
+- [```mp```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L264): Enable mixed precision inference. Default: False (off)
 - [```depth_confidence```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L265): Controls early stopping, improves run time. Recommended: 0.95. Default: -1 (off) 
 - [```width_confidence```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L266): Controls iterative feature removal, improves run time. Recommended: 0.99. Default: -1 (off)
-- [```flash```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L262): Enable [FlashAttention](https://github.com/HazyResearch/flash-attention/tree/main). Significantly improves runtime and reduces memory consumption without any impact on accuracy, but requires either [FlashAttention](https://github.com/HazyResearch/flash-attention/tree/main) or ```torch >= 2.0```.
+- [```filter_threshold```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L267): Match confidence. Increase this value to obtain less, but stronger matches. Default: 0.1
 
+</details>
 
 ## LightGlue in other frameworks
 - ONNX: [fabio-sim](https://github.com/fabio-sim) was blazing fast in implementing an ONNX-compatible version of LightGlue [here](https://github.com/fabio-sim/LightGlue-ONNX).
