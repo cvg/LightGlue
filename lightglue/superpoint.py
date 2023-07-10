@@ -221,7 +221,7 @@ class SuperPoint(nn.Module):
         if img.dim() == 3:
             img = img[None]  # add batch dim
         assert img.dim() == 4 and img.shape[0] == 1
-        shape = img.shape[-1], img.shape[-2]
+        shape = img.shape[1:3][::-1]
         img, scales = ImagePreprocessor(
             **{**self.preprocess_conf, **conf})(img)
         feats = self.forward({'image': img})
