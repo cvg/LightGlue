@@ -221,10 +221,10 @@ class SuperPoint(nn.Module):
         if img.dim() == 3:
             img = img[None]  # add batch dim
         assert img.dim() == 4 and img.shape[0] == 1
-        shape = img.shape[1:3][::-1]
+        shape = img.shape[-2:][::-1]
         img, scales = ImagePreprocessor(
             **{**self.preprocess_conf, **conf})(img)
         feats = self.forward({'image': img})
-        feats['image_size'] = torch.Tensor(shape)[None].to(img).float()
+        feats['image_size'] = torch.tensor(shape)[None].to(img).float()
         feats['keypoints'] = (feats['keypoints'] + .5) / scales[None] - .5
         return feats
