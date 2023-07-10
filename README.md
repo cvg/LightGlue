@@ -30,7 +30,7 @@ The training end evaluation code will be released in July in a separate repo. If
 
 ## Installation and Demo
 
-You can install this repo pip:
+You can install this repo using pip:
 
 ```bash
 git clone https://github.com/cvg/LightGlue.git && cd LightGlue
@@ -47,11 +47,11 @@ from lightglue.utils import load_image, rbd
 
 # SuperPoint+LightGlue
 extractor = SuperPoint(max_num_keypoints=2048).eval().cuda()  # load the extractor
-matcher = LightGlue(pretrained='superpoint').eval().cuda()  # load the matcher
+matcher = LightGlue(features='superpoint').eval().cuda()  # load the matcher
 
 # or DISK+LightGlue
 extractor = DISK(max_num_keypoints=2048).eval().cuda()  # load the extractor
-matcher = LightGlue(pretrained='disk').eval().cuda()  # load the matcher
+matcher = LightGlue(features='disk').eval().cuda()  # load the matcher
 
 # load images to torch
 image0, scales0 = load_image(path_to_image_0)

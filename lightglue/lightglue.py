@@ -274,18 +274,18 @@ class LightGlue(nn.Module):
     version = "v0.1_arxiv"
     url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 
-    pretrained = {
+    features = {
         'superpoint': ('superpoint_lightglue', 256),
         'disk': ('disk_lightglue', 128)
     }
 
-    def __init__(self, pretrained='superpoint', **conf) -> None:
+    def __init__(self, features='superpoint', **conf) -> None:
         super().__init__()
         self.conf = {**self.default_conf, **conf}
-        if pretrained is not None:
-            assert (pretrained in list(self.pretrained.keys()))
+        if features is not None:
+            assert (features in list(self.features.keys()))
             self.conf['weights'], self.conf['input_dim'] = \
-                self.pretrained[pretrained]
+                self.features[features]
         self.conf = conf = SimpleNamespace(**self.conf)
 
         if conf.input_dim != conf.descriptor_dim:
@@ -307,10 +307,10 @@ class LightGlue(nn.Module):
         self.token_confidence = nn.ModuleList([
             TokenConfidence(d) for _ in range(n-1)])
 
-        if pretrained is not None:
+        if features is not None:
             fname = f'{conf.weights}_{self.version}.pth'.replace('.', '-')
             state_dict = torch.hub.load_state_dict_from_url(
-                self.url.format(self.version, pretrained), file_name=fname)
+                self.url.format(self.version, features), file_name=fname)
             self.load_state_dict(state_dict, strict=False)
         elif conf.weights is not None:
             path = Path(__file__).parent
