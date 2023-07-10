@@ -21,7 +21,7 @@ class ImagePreprocessor:
     def __init__(self, **conf) -> None:
         super().__init__()
         self.conf = {**self.default_conf, **conf}
-        self.conf = conf = SimpleNamespace(**self.conf)
+        self.conf = SimpleNamespace(**self.conf)
 
     def __call__(self, img: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Resize and preprocess an image, return image and resize scale"""
@@ -121,11 +121,10 @@ def load_image(path: Path, grayscale: bool = False, resize: int = None,
 
 def match_pair(extractor, matcher,
                image0: torch.Tensor, image1: torch.Tensor,
-               resize: Optional[int] = 1024,
-               device: str = 'cpu'):
+               device: str = 'cpu', **preprocess):
     """Match a pair of images (image0, image1) with an extractor and matcher"""
-    feats0 = extractor.extract(image0, resize=resize)
-    feats1 = extractor.extract(image1, resize=resize)
+    feats0 = extractor.extract(image0, **preprocess)
+    feats1 = extractor.extract(image1, **preprocess)
     matches01 = matcher({'image0': feats0, 'image1': feats1})
     data = [feats0, feats1, matches01]
     # remove batch dim and move to target device
