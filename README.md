@@ -100,7 +100,8 @@ Here is an explanation of all LightGlue configuration entries that can be change
 </details>
 
 ## LightGlue in other frameworks
-- ONNX: [fabio-sim](https://github.com/fabio-sim) was blazing fast in implementing an ONNX-compatible version of LightGlue [here](https://github.com/fabio-sim/LightGlue-ONNX).
+- ONNX: [fabio-sim](https://github.com/fabio-sim) implemented an ONNX-compatible version of LightGlue [here](https://github.com/fabio-sim/LightGlue-ONNX).
+- WebUI: [Vincentqyw](https://github.com/Vincentqyw) created a WebUI for feature matching, including LightGlue. Checkout his repo [here](https://github.com/Vincentqyw/image-matching-webui).
 
 
 ## BibTeX Citation
