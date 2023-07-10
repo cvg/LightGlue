@@ -28,7 +28,7 @@ We release pretrained weights of LightGlue with [SuperPoint](https://arxiv.org/a
 
 The training end evaluation code will be released in July in a separate repo. If you wish to be notified, subscribe to [Issue #6](https://github.com/cvg/LightGlue/issues/6).
 
-## Installation and Demo
+## Installation and Demo [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1ks6htHJuLz5KwHemKbmoBi7Vwic0P8PX)
 
 You can install this repo using pip:
 
