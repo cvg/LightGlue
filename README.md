@@ -53,17 +53,19 @@ extractor = DISK(max_num_keypoints=2048).eval().cuda()  # load the extractor
 matcher = LightGlue(features='disk').eval().cuda()  # load the matcher
 
 # load images to torch
-image0, scales0 = load_image(path_to_image_0)
-image1, scales1 = load_image(path_to_image_1)
+image0, scales0 = load_image('path/to/image_0.jpg')
+image1, scales1 = load_image('path/to/image_1.jpg')
 
-# extraction + matching (with online resizing)
+# extract local features
 feats0 = extractor.extract(image0.cuda())  # disable online resizing with resize=None
 feats1 = extractor.extract(image1.cuda())
-matches01 = matcher({'image0': feats0, 'image1': feats1})
-feats0, feats1, matches01 = [rbd(x) for x in [feats0, feats1, matches01]]  # remove the batch dimension
 
-kpts0, kpts1, matches = feats0['keypoints'], feats1['keypoints'], matches01['matches']
-m_kpts0, m_kpts1 = kpts0[matches[..., 0]], kpts1[matches[..., 1]]
+# match the features
+matches01 = matcher({'image0': feats0, 'image1': feats1})
+feats0, feats1, matches01 = [rbd(x) for x in [feats0, feats1, matches01]]  # remove batch dimension
+matches = matches01['matches']
+points0 = feats0['keypoints'][matches[..., 0]]
+points1 = feats1['keypoints'][matches[..., 1]]
 ```
 
 We also provide a convenience method to match a pair of images:
