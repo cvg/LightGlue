@@ -128,7 +128,6 @@ class Transformer(nn.Module):
     def _forward(self, x: torch.Tensor,
                  encoding: Optional[torch.Tensor] = None):
         qkv = self.Wqkv(x)
-        b, n, _ = qkv.shape
         qkv = qkv.unflatten(-1, (self.num_heads, -1, 3)).transpose(1, 2)
         q, k, v = qkv[..., 0], qkv[..., 1], qkv[..., 2]
         if encoding is not None:
