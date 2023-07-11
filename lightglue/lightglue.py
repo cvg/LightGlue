@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+import warnings
 import numpy as np
 import torch
 from torch import nn
@@ -80,11 +81,10 @@ class Attention(nn.Module):
     def __init__(self, allow_flash: bool) -> None:
         super().__init__()
         if allow_flash and not FLASH_AVAILABLE:
-            raise UserWarning(
-                'FlashAttention requested but not available in your '
-                'environment.\n'
-                'Consider installing torch >= 2.0 or flash_attn for '
-                'faster inference.'
+            warnings.warn(
+                'FlashAttention is not available. For optimal speed, '
+                'consider installing torch >= 2.0 or flash-attn.',
+                stacklevel=2,
             )
         self.enable_flash = allow_flash and FLASH_AVAILABLE
         if allow_flash and FlashCrossAttention:
