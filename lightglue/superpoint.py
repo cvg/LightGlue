@@ -98,7 +98,7 @@ class SuperPoint(nn.Module):
     default_conf = {
         'descriptor_dim': 256,
         'nms_radius': 4,
-        'max_num_keypoints': -1,
+        'max_num_keypoints': None,
         'detection_threshold': 0.0005,
         'remove_borders': 4,
     }
@@ -140,8 +140,8 @@ class SuperPoint(nn.Module):
         self.load_state_dict(torch.hub.load_state_dict_from_url(url))
 
         mk = self.conf['max_num_keypoints']
-        if mk == 0 or mk < -1:
-            raise ValueError('\"max_num_keypoints\" must be positive or \"-1\"')
+        if mk is not None and mk <= 0:
+            raise ValueError('max_num_keypoints must be positive or None')
 
         print('Loaded SuperPoint model')
 
@@ -193,7 +193,7 @@ class SuperPoint(nn.Module):
         scores = [scores[best_kp[0] == i] for i in range(b)]
 
         # Keep the k keypoints with highest score
-        if self.conf['max_num_keypoints'] >= 0:
+        if self.conf['max_num_keypoints'] is not None:
             keypoints, scores = list(zip(*[
                 top_k_keypoints(k, s, self.conf['max_num_keypoints'])
                 for k, s in zip(keypoints, scores)]))
