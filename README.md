@@ -17,7 +17,7 @@
 <p align="center">
     <a href="https://arxiv.org/abs/2306.13643"><img src="assets/easy_hard.jpg" alt="example" width=80%></a>
     <br>
-    <em>LightGlue is a deep neural network that matches sparse local features across image pairs.<br>It is faster at matching easy pairs (top) than difficult ones (bottom) thanks to an adaptive mechanism.</em>
+    <em>LightGlue is a deep neural network that matches sparse local features across image pairs.<br>An adaptive mechanism makes it fast for easy pairs (top) and reduces the computational complexity for difficult ones (bottom).</em>
 </p>
 
 ##
