@@ -9,9 +9,13 @@ from typing import Optional, List, Callable
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
-    FOUND_OFFICIAL_FLASH = True
 except ModuleNotFoundError:
-    FOUND_OFFICIAL_FLASH = False
+    FlashCrossAttention = None
+
+if FlashCrossAttention or hasattr(F, 'scaled_dot_product_attention'):
+    FLASH_AVAILABLE = True
+else:
+    FLASH_AVAILABLE = False
 
 torch.backends.cudnn.deterministic = True
 
@@ -19,13 +23,9 @@ torch.backends.cudnn.deterministic = True
 @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
 def normalize_keypoints(
         kpts: torch.Tensor,
-        size: Optional[List[int]] = None,
-        shape: Optional[List[int]] = None) -> torch.Tensor:
-    if size is None:
-        assert shape is not None
-        _, _, h, w = shape
-        one = kpts.new_tensor(1)
-        size = torch.stack([one*w, one*h])[None]
+        size: torch.Tensor) -> torch.Tensor:
+    if isinstance(size, torch.Size):
+        size = torch.tensor(size)[None]
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
     kpts = (kpts - shift[:, None]) / scale[:, None, None]
@@ -63,7 +63,7 @@ class LearnableFourierPositionalEncoding(nn.Module):
 
 class TokenConfidence(nn.Module):
     def __init__(self, dim: int) -> None:
-        super(TokenConfidence, self).__init__()
+        super().__init__()
         self.token = nn.Sequential(
             nn.Linear(dim, 1),
             nn.Sigmoid()
@@ -76,35 +76,37 @@ class TokenConfidence(nn.Module):
             self.token(desc1.detach().float()).squeeze(-1))
 
 
-class FastAttention(nn.Module):
-    def __init__(self, dim: int) -> None:
+class Attention(nn.Module):
+    def __init__(self, allow_flash: bool) -> None:
         super().__init__()
-        self.s = dim ** -0.5
+        if allow_flash and not FLASH_AVAILABLE:
+            raise UserWarning(
+                'FlashAttention requested but not available in your '
+                'environment.\n'
+                'Consider installing torch >= 2.0 or flash_attn for '
+                'faster inference.'
+            )
+        self.enable_flash = allow_flash and FLASH_AVAILABLE
+        if allow_flash and FlashCrossAttention:
+            self.flash_ = FlashCrossAttention()
 
     def forward(self, q, k, v) -> torch.Tensor:
-        if hasattr(F, 'scaled_dot_product_attention'):
-            q, k, v = [x.contiguous() for x in [q, k, v]]
-            return F.scaled_dot_product_attention(q, k, v)
+        if self.enable_flash and q.device.type == 'cuda':
+            if FlashCrossAttention:
+                q, k, v = [x.transpose(-2, -3) for x in [q, k, v]]
+                m = self.flash_(q.half(), torch.stack([k, v], 2).half())
+                return m.transpose(-2, -3).to(q.dtype)
+            else:  # use torch 2.0 scaled_dot_product_attention with flash
+                args = [x.half().contiguous() for x in [q, k, v]]
+                with torch.backends.cuda.sdp_kernel(enable_flash=True):
+                    return F.scaled_dot_product_attention(*args).to(q.dtype)
+        elif hasattr(F, 'scaled_dot_product_attention'):
+            args = [x.contiguous() for x in [q, k, v]]
+            return F.scaled_dot_product_attention(*args).to(q.dtype)
         else:
-            s = self.s
+            s = q.shape[-1] ** -0.5
             attn = F.softmax(torch.einsum('...id,...jd->...ij', q, k) * s, -1)
             return torch.einsum('...ij,...jd->...id', attn, v)
-
-
-class FlashAttention(nn.Module):
-    def __init__(self, *args) -> None:
-        super().__init__()
-        if FOUND_OFFICIAL_FLASH:
-            self.flash = FlashCrossAttention()
-
-    def forward(self, q, k, v) -> torch.Tensor:
-        if FOUND_OFFICIAL_FLASH:
-            q, k, v = [x.transpose(-2, -3) for x in [q, k, v]]
-            m = self.flash(q.half(), torch.stack([k, v], 2).half())
-            return m.transpose(-2, -3).to(q.dtype)
-        else:
-            args = [x.half().contiguous() for x in [q, k, v]]
-            return F.scaled_dot_product_attention(*args).to(q.dtype)
 
 
 class Transformer(nn.Module):
@@ -116,8 +118,7 @@ class Transformer(nn.Module):
         assert self.embed_dim % num_heads == 0
         self.head_dim = self.embed_dim // num_heads
         self.Wqkv = nn.Linear(embed_dim, 3*embed_dim, bias=bias)
-        attn = FlashAttention if flash else FastAttention
-        self.inner_attn = attn(self.head_dim)
+        self.inner_attn = Attention(flash)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.ffn = nn.Sequential(
             nn.Linear(2*embed_dim, 2*embed_dim),
@@ -161,8 +162,8 @@ class CrossTransformer(nn.Module):
             nn.Linear(2*embed_dim, embed_dim)
         )
 
-        if flash:
-            self.flash = FastAttention(dim_head)
+        if flash and FLASH_AVAILABLE:
+            self.flash = Attention(True)
         else:
             self.flash = None
 
@@ -209,8 +210,8 @@ def sigmoid_log_double_softmax(
 
 
 class MatchAssignment(nn.Module):
-    def __init__(self, dim: float) -> None:
-        super(MatchAssignment, self).__init__()
+    def __init__(self, dim: int) -> None:
+        super().__init__()
         self.dim = dim
         self.matchability = nn.Linear(dim, 1, bias=True)
         self.final_proj = nn.Linear(dim, dim, bias=True)
@@ -259,34 +260,34 @@ class LightGlue(nn.Module):
         'descriptor_dim': 256,
         'n_layers': 9,
         'num_heads': 4,
-        'flash': False,  # enable FlashAttention
+        'flash': True,  # enable FlashAttention if available.
         'mp': False,  # enable mixed precision
+        'depth_confidence': 0.95,  # early stopping, disable with -1
+        'width_confidence': 0.99,  # point pruning, disable with -1
         'filter_threshold': 0.1,  # match threshold
-        'depth_confidence': -1,  # -1 is no early stopping, recommend: 0.95
-        'width_confidence': -1,  # -1 is no point pruning, recommend: 0.99
         'weights': None,
     }
 
     required_data_keys = [
-        'keypoints0', 'keypoints1', 'descriptors0', 'descriptors1']
-    
+        'image0', 'image1']
+
     version = "v0.1_arxiv"
     url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 
-    pretrained = {
+    features = {
         'superpoint': ('superpoint_lightglue', 256),
         'disk': ('disk_lightglue', 128)
     }
 
-    def __init__(self, pretrained='superpoint', **conf) -> None:
+    def __init__(self, features='superpoint', **conf) -> None:
         super().__init__()
         self.conf = {**self.default_conf, **conf}
-        if pretrained is not None:
-            assert (pretrained in list(self.pretrained.keys()))
+        if features is not None:
+            assert (features in list(self.features.keys()))
             self.conf['weights'], self.conf['input_dim'] = \
-                self.pretrained[pretrained]
+                self.features[features]
         self.conf = conf = SimpleNamespace(**self.conf)
-            
+
         if conf.input_dim != conf.descriptor_dim:
             self.input_proj = nn.Linear(
                 conf.input_dim, conf.descriptor_dim, bias=True)
@@ -306,10 +307,10 @@ class LightGlue(nn.Module):
         self.token_confidence = nn.ModuleList([
             TokenConfidence(d) for _ in range(n-1)])
 
-        if pretrained is not None:
+        if features is not None:
             fname = f'{conf.weights}_{self.version}.pth'.replace('.', '-')
             state_dict = torch.hub.load_state_dict_from_url(
-                self.url.format(self.version, pretrained), file_name=fname)
+                self.url.format(self.version, features), file_name=fname)
             self.load_state_dict(state_dict, strict=False)
         elif conf.weights is not None:
             path = Path(__file__).parent
@@ -324,13 +325,21 @@ class LightGlue(nn.Module):
         Match keypoints and descriptors between two images
 
         Input (dict):
-            keypoints0: [B x M x 2], descriptors0: [B x M x D]
-            keypoints1: [B x N x 2], descriptors1: [B x N x D]
-
+            image0: dict
+                keypoints: [B x M x 2]
+                descriptors: [B x M x D]
+                image: [B x C x H x W] or image_size: [B x 2]
+            image1: dict
+                keypoints: [B x N x 2]
+                descriptors: [B x N x D]
+                image: [B x C x H x W] or image_size: [B x 2]
         Output (dict):
-            matches0: [B x M], matching_scores0: [B x M]
-            matches1: [B x N], matching_scores1: [B x N]
             log_assignment: [B x M+1 x N+1]
+            matches0: [B x M]
+            matching_scores0: [B x M]
+            matches1: [B x N]
+            matching_scores1: [B x N]
+            matches: List[[Si x 2]], scores: List[[Si]]
         """
         with torch.autocast(enabled=self.conf.mp, device_type='cuda'):
             return self._forward(data)
@@ -338,23 +347,24 @@ class LightGlue(nn.Module):
     def _forward(self, data: dict) -> dict:
         for key in self.required_data_keys:
             assert key in data, f'Missing key {key} in data'
-        kpts0_, kpts1_ = data['keypoints0'], data['keypoints1']
+        data0, data1 = data['image0'], data['image1']
+        kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
         b, m, _ = kpts0_.shape
         b, n, _ = kpts1_.shape
-
-        kpts0 = normalize_keypoints(
-            kpts0_, size=data.get('image_size0'), shape=data['image0'].shape)
-        kpts1 = normalize_keypoints(
-            kpts1_, size=data.get('image_size1'), shape=data['image1'].shape)
+        size0, size1 = data0.get('image_size'), data1.get('image_size')
+        size0 = size0 if size0 is not None else data0['image'].shape[-2:][::-1]
+        size1 = size1 if size1 is not None else data1['image'].shape[-2:][::-1]
+        kpts0 = normalize_keypoints(kpts0_, size=size0)
+        kpts1 = normalize_keypoints(kpts1_, size=size1)
 
         assert torch.all(kpts0 >= -1) and torch.all(kpts0 <= 1)
         assert torch.all(kpts1 >= -1) and torch.all(kpts1 <= 1)
 
-        desc0 = data['descriptors0'].detach()
-        desc1 = data['descriptors1'].detach()
+        desc0 = data0['descriptors'].detach()
+        desc1 = data1['descriptors'].detach()
 
-        assert(desc0.shape[-1] == self.conf.input_dim)
-        assert(desc1.shape[-1] == self.conf.input_dim)
+        assert desc0.shape[-1] == self.conf.input_dim
+        assert desc1.shape[-1] == self.conf.input_dim
 
         if torch.is_autocast_enabled():
             desc0 = desc0.half()
@@ -413,6 +423,12 @@ class LightGlue(nn.Module):
         m0, m1, mscores0, mscores1 = filter_matches(
             scores, self.conf.filter_threshold)
 
+        matches, mscores = [], []
+        for k in range(b):
+            valid = m0[k] > -1
+            matches.append(torch.stack([torch.where(valid)[0], m0[k][valid]], -1))
+            mscores.append(mscores0[k][valid])
+
         return {
             'log_assignment': scores,
             'matches0': m0,
@@ -422,6 +438,8 @@ class LightGlue(nn.Module):
             'stop': i+1,
             'prune0': prune0,
             'prune1': prune1,
+            'matches': matches,
+            'scores': mscores,
         }
 
     def conf_th(self, i: int) -> float:
