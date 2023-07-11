@@ -69,6 +69,8 @@ def rbd(data: dict) -> dict:
 
 def read_image(path: Path, grayscale: bool = False) -> np.ndarray:
     """Read an image from path as RGB or grayscale"""
+    if not Path(path).exists():
+        raise FileNotFoundError(f'No image at path {path}.')
     mode = cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR
     image = cv2.imread(str(path), mode)
     if image is None:
@@ -90,7 +92,8 @@ def numpy_image_to_torch(image: np.ndarray) -> torch.Tensor:
 
 
 def resize_image(image: np.ndarray, size: Union[List[int], int],
-                 fn: str, interp: Optional[str] = 'area') -> np.ndarray:
+                 fn: str = 'max', interp: Optional[str] = 'area',
+                 ) -> np.ndarray:
     """Resize an image to a fixed size, or according to max or min edge."""
     h, w = image.shape[:2]
 
@@ -112,13 +115,11 @@ def resize_image(image: np.ndarray, size: Union[List[int], int],
     return cv2.resize(image, (w_new, h_new), interpolation=mode), scale
 
 
-def load_image(path: Path, grayscale: bool = False, resize: int = None,
-               fn: str = 'max', interp: str = 'area') -> torch.Tensor:
-    img = read_image(path, grayscale=grayscale)
-    scales = [1, 1]
+def load_image(path: Path, resize: int = None, **kwargs) -> torch.Tensor:
+    image = read_image(path)
     if resize is not None:
-        img, scales = resize_image(img, resize, fn=fn, interp=interp)
-    return numpy_image_to_torch(img), torch.Tensor(scales)
+        image, _ = resize_image(image, resize, **kwargs)
+    return numpy_image_to_torch(image)
 
 
 def match_pair(extractor, matcher,
