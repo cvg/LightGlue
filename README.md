@@ -11,7 +11,10 @@
     <img src="assets/larchitecture.svg" alt="Logo" height="40">
 </p> -->
   <!-- <h2 align="center">PrePrint 2023</h2> -->
-  <h2><p align="center"><a href="https://arxiv.org/pdf/2306.13643.pdf" align="center">Paper</a></p></h2>
+  <h2 align="center"><p>
+    <a href="https://arxiv.org/pdf/2306.13643.pdf" align="center">Paper</a> | 
+    <a href="https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb" align="center">Colab</a>
+  </p></h2>
   <div align="center"></div>
 </p>
 <p align="center">
@@ -27,7 +30,7 @@ This repository hosts the inference code of LightGlue, a lightweight feature mat
 We release pretrained weights of LightGlue with [SuperPoint](https://arxiv.org/abs/1712.07629) and [DISK](https://arxiv.org/abs/2006.13566) local features.
 The training end evaluation code will be released in July in a separate repo. To be notified, subscribe to [issue #6](https://github.com/cvg/LightGlue/issues/6).
 
-## Installation and demo [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1ks6htHJuLz5KwHemKbmoBi7Vwic0P8PX)
+## Installation and demo [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb)
 
 Install this repo using pip:
 
