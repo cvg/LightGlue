@@ -84,12 +84,6 @@ feats0, feats1, matches01 = match_pair(extractor, matcher, image0, image1)
 </p>
 
 ## Advanced configuration
-To activate adaptive LightGlue, provide the following parameters:
-
-```python
-extractor = SuperPoint(max_num_keypoints=2048).eval().cuda()
-matcher = LightGlue(features='superpoint', depth_confidence=0.95, width_confidence=0.99).eval().cuda()
-```
 
 <details>
 <summary>[Detail of all parameters - click to expand]</summary>
@@ -97,8 +91,8 @@ matcher = LightGlue(features='superpoint', depth_confidence=0.95, width_confiden
 - [```n_layers```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L261): Number of stacked self+cross attention layers. Reduce this value for faster inference at the cost of accuracy (continuous red line in the plot above). Default: 9 (= all layers).
 - [```flash```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L263): Enable [FlashAttention](https://github.com/HazyResearch/flash-attention/tree/main). Significantly improves runtime and reduces memory consumption without any impact on accuracy, but requires either [FlashAttention](https://github.com/HazyResearch/flash-attention/tree/main) or ```torch >= 2.0```, and CUDA. Default: True (LightGlue automatically detects if FlashAttention is available in your environment)
 - [```mp```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L264): Enable mixed precision inference. Default: False (off)
-- [```depth_confidence```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L265): Controls early stopping, improves run time. Recommended: 0.95. Default: -1 (off) 
-- [```width_confidence```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L266): Controls iterative feature removal, improves run time. Recommended: 0.99. Default: -1 (off)
+- [```depth_confidence```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L265): Controls the early stopping. A lower values stops more often at earlier layers. Default: 0.95, disable with -1.
+- [```width_confidence```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L266): Controls the iterative point pruning. A lower value prunes more points earlier. Default: 0.99, disable with -1.
 - [```filter_threshold```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L267): Match confidence. Increase this value to obtain less, but stronger matches. Default: 0.1
 
 </details>

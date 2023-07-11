@@ -63,7 +63,7 @@ class LearnableFourierPositionalEncoding(nn.Module):
 
 class TokenConfidence(nn.Module):
     def __init__(self, dim: int) -> None:
-        super(TokenConfidence, self).__init__()
+        super().__init__()
         self.token = nn.Sequential(
             nn.Linear(dim, 1),
             nn.Sigmoid()
@@ -84,7 +84,7 @@ class Attention(nn.Module):
                 'FlashAttention requested but not available in your '
                 'environment.\n'
                 'Consider installing torch >= 2.0 or flash_attn for '
-                'improved run time.'
+                'faster inference.'
             )
         self.enable_flash = allow_flash and FLASH_AVAILABLE
         if allow_flash and FlashCrossAttention:
@@ -210,8 +210,8 @@ def sigmoid_log_double_softmax(
 
 
 class MatchAssignment(nn.Module):
-    def __init__(self, dim: float) -> None:
-        super(MatchAssignment, self).__init__()
+    def __init__(self, dim: int) -> None:
+        super().__init__()
         self.dim = dim
         self.matchability = nn.Linear(dim, 1, bias=True)
         self.final_proj = nn.Linear(dim, dim, bias=True)
@@ -262,8 +262,8 @@ class LightGlue(nn.Module):
         'num_heads': 4,
         'flash': True,  # enable FlashAttention if available.
         'mp': False,  # enable mixed precision
-        'depth_confidence': -1,  # -1 is no early stopping, recommend: 0.95
-        'width_confidence': -1,  # -1 is no point pruning, recommend: 0.99
+        'depth_confidence': 0.95,  # early stopping, disable with -1
+        'width_confidence': 0.99,  # point pruning, disable with -1
         'filter_threshold': 0.1,  # match threshold
         'weights': None,
     }
