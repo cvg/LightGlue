@@ -117,6 +117,7 @@ The maximum speed is obtained with [FlashAttention](https://arxiv.org/abs/2205.1
 - [hloc - the visual localization toolbox](https://github.com/cvg/Hierarchical-Localization/): run LightGlue for Structure-from-Motion and visual localization.
 - [LightGlue-ONNX](https://github.com/fabio-sim/LightGlue-ONNX): export LightGlue to the Open Neural Network Exchange format.
 - [Image Matching WebUI](https://github.com/Vincentqyw/image-matching-webui): a web GUI to easily compare different matchers, including LightGlue.
+- [Using LightGlue from kornia](https://kornia.readthedocs.io/en/latest/feature.html#kornia.feature.LightGlue). You can use vanilla `LightGlue`, or `LightGlueMatcher` compatible with other kornia matchers like AdaLAM.
 
 ## BibTeX Citation
 If you use any ideas from the paper or code from this repo, please consider citing:
