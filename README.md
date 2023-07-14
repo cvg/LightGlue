@@ -127,8 +127,8 @@ If you use any ideas from the paper or code from this repo, please consider citi
   author    = {Philipp Lindenberger and
                Paul-Edouard Sarlin and
                Marc Pollefeys},
-  title     = {{LightGlue}: Local Feature Matching at Light Speed},
-  booktitle = {ArXiv PrePrint},
+  title     = {{LightGlue: Local Feature Matching at Light Speed}},
+  booktitle = {ICCV},
   year      = {2023}
 }
 ```
