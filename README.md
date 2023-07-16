@@ -123,7 +123,7 @@ The maximum speed is obtained with [FlashAttention](https://arxiv.org/abs/2205.1
 If you use any ideas from the paper or code from this repo, please consider citing:
 
 ```txt
-@inproceedings{lindenberger23lightglue,
+@inproceedings{lindenberger2023lightglue,
   author    = {Philipp Lindenberger and
                Paul-Edouard Sarlin and
                Marc Pollefeys},
