@@ -76,6 +76,7 @@ def plot_images(imgs, titles=None, cmaps='gray', dpi=100, pad=.5,
         if titles:
             ax[i].set_title(titles[i])
     fig.tight_layout(pad=pad)
+    return fig, ax
 
 
 def plot_keypoints(kpts, colors='lime', ps=4, axes=None, a=1.0):
@@ -91,11 +92,14 @@ def plot_keypoints(kpts, colors='lime', ps=4, axes=None, a=1.0):
         a = [a] * len(kpts)
     if axes is None:
         axes = plt.gcf().axes
+    artists = []
     for ax, k, c, alpha in zip(axes, kpts, colors, a):
         if isinstance(k, torch.Tensor):
             k = k.cpu().numpy()
-        ax.scatter(k[:, 0], k[:, 1], c=c, s=ps, linewidths=0, alpha=alpha)
-
+        artists.append(
+                ax.scatter(k[:, 0], k[:, 1], c=c, s=ps, linewidths=0, alpha=alpha)
+        )
+    return artists
 
 def plot_matches(kpts0, kpts1, color=None, lw=1.5, ps=4, a=1., labels=None,
                  axes=None):
@@ -123,7 +127,7 @@ def plot_matches(kpts0, kpts1, color=None, lw=1.5, ps=4, a=1., labels=None,
         color = matplotlib.cm.hsv(np.random.rand(len(kpts0))).tolist()
     elif len(color) > 0 and not isinstance(color[0], (tuple, list)):
         color = [color] * len(kpts0)
-
+    artists = []
     if lw > 0:
         for i in range(len(kpts0)):
             line = matplotlib.patches.ConnectionPatch(
@@ -135,25 +139,33 @@ def plot_matches(kpts0, kpts1, color=None, lw=1.5, ps=4, a=1., labels=None,
                 picker=5.0)
             line.set_annotation_clip(True)
             fig.add_artist(line)
+            artists.append(line)
 
     # freeze the axes to prevent the transform to change
     ax0.autoscale(enable=False)
     ax1.autoscale(enable=False)
 
     if ps > 0:
-        ax0.scatter(kpts0[:, 0], kpts0[:, 1], c=color, s=ps)
-        ax1.scatter(kpts1[:, 0], kpts1[:, 1], c=color, s=ps)
+        artists.append(ax0.scatter(kpts0[:, 0], kpts0[:, 1], c=color, s=ps,
+                                   linewidths=0))
+        artists.append(ax1.scatter(kpts1[:, 0], kpts1[:, 1], c=color, s=ps,
+                                   linewidths=0))
+    return artists
 
 
 def add_text(idx, text, pos=(0.01, 0.99), fs=15, color='w',
-             lcolor='k', lwidth=2, ha='left', va='top'):
-    ax = plt.gcf().axes[idx]
+             lcolor='k', lwidth=2, ha='left', va='top', axes=None):
+    if axes is None:
+        ax = plt.gcf().axes[idx]
+    else:
+        ax = axes[idx]
     t = ax.text(*pos, text, fontsize=fs, ha=ha, va=va,
                 color=color, transform=ax.transAxes)
     if lcolor is not None:
         t.set_path_effects([
             path_effects.Stroke(linewidth=lwidth, foreground=lcolor),
             path_effects.Normal()])
+    return [t]
 
 
 def save_plot(path, **kw):
