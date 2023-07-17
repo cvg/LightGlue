@@ -21,6 +21,7 @@ class DISK(nn.Module):
         'grayscale': False,
     }
 
+    name = 'disk'
     required_data_keys = ['image']
 
     def __init__(self, **conf) -> None:

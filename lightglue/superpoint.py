@@ -109,6 +109,7 @@ class SuperPoint(nn.Module):
         'grayscale': True,
     }
 
+    name = 'superpoint'
     required_data_keys = ['image']
 
     def __init__(self, **conf):
