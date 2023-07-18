@@ -236,8 +236,10 @@ def filter_matches(scores: torch.Tensor, th: float):
     """ obtain matches from a log assignment matrix [Bx M+1 x N+1]"""
     max0, max1 = scores[:, :-1, :-1].max(2), scores[:, :-1, :-1].max(1)
     m0, m1 = max0.indices, max1.indices
-    mutual0 = torch.arange(m0.shape[1], device=m0.device)[None] == m1.gather(1, m0)
-    mutual1 = torch.arange(m1.shape[1], device=m1.device)[None] == m0.gather(1, m1)
+    indices0 = torch.arange(m0.shape[1], device=m0.device)[None]
+    indices1 = torch.arange(m1.shape[1], device=m1.device)[None]
+    mutual0 = indices0 == m1.gather(1, m0)
+    mutual1 = indices1 == m0.gather(1, m1)
     max0_exp = max0.values.exp()
     zero = max0_exp.new_tensor(0)
     mscores0 = torch.where(mutual0, max0_exp, zero)
@@ -375,90 +377,101 @@ class LightGlue(nn.Module):
         encoding1 = self.posenc(kpts1)
 
         # GNN + final_proj + assignment
-        ind0 = torch.arange(0, m, device=kpts0.device)[None]
-        ind1 = torch.arange(0, n, device=kpts0.device)[None]
-        prune0 = torch.ones_like(ind0)  # store layer where pruning is detected
-        prune1 = torch.ones_like(ind1)
-        dec, wic = self.conf.depth_confidence, self.conf.width_confidence
+        do_early_stop = self.conf.depth_confidence > 0
+        do_point_pruning = self.conf.width_confidence > 0
+        if do_point_pruning:
+            ind0 = torch.arange(0, m, device=kpts0.device)[None]
+            ind1 = torch.arange(0, n, device=kpts0.device)[None]
+            # We store the index of the layer at which pruning is detected.
+            prune0 = torch.ones_like(ind0)
+            prune1 = torch.ones_like(ind1)
         token0, token1 = None, None
         for i in range(self.conf.n_layers):
-            # self+cross attention
             desc0, desc1 = self.self_attn[i](
                 desc0, desc1, encoding0, encoding1)
             desc0, desc1 = self.cross_attn[i](desc0, desc1)
             if i == self.conf.n_layers - 1:
                 continue  # no early stopping or adaptive width at last layer
-            if dec > 0:  # early stopping
+
+            if do_early_stop:
                 token0, token1 = self.token_confidence[i](desc0, desc1)
-                if self.stop(token0, token1, self.conf_th(i), dec, m+n):
+                if self.check_if_stop(token0, token1, i, m+n):
                     break
-            if wic > 0:  # point pruning
-                match0, match1 = self.log_assignment[i].scores(desc0, desc1)
-                mask0 = self.get_mask(token0, match0, self.conf_th(i), 1-wic)
-                mask1 = self.get_mask(token1, match1, self.conf_th(i), 1-wic)
+            if do_point_pruning:
+                scores0, scores1 = self.log_assignment[i].scores(desc0, desc1)
+                mask0 = self.get_pruning_mask(token0, scores0, i)
+                mask1 = self.get_pruning_mask(token1, scores1, i)
                 ind0, ind1 = ind0[mask0][None], ind1[mask1][None]
                 desc0, desc1 = desc0[mask0][None], desc1[mask1][None]
                 if desc0.shape[-2] == 0 or desc1.shape[-2] == 0:
                     break
                 encoding0 = encoding0[:, :, mask0][:, None]
                 encoding1 = encoding1[:, :, mask1][:, None]
-            prune0[:, ind0] += 1
-            prune1[:, ind1] += 1
+                prune0[:, ind0] += 1
+                prune1[:, ind1] += 1
 
         scores, _ = self.log_assignment[i](desc0, desc1)
         m0, m1, mscores0, mscores1 = filter_matches(
             scores, self.conf.filter_threshold)
 
-        if wic > 0:  # scatter with indices after pruning
+        matches, mscores = [], []
+        for k in range(b):
+            valid = m0[k] > -1
+            m_indices_0 = torch.where(valid)[0]
+            m_indices_1 = m0[k][valid]
+            if do_point_pruning:
+                m_indices_0 = ind0[k, m_indices_0]
+                m_indices_1 = ind1[k, m_indices_1]
+            matches.append(torch.stack([m_indices_0, m_indices_1], -1))
+            mscores.append(mscores0[k][valid])
+
+        # TODO: Remove when hloc switches to the compact format.
+        if do_point_pruning:
             m0_ = torch.full((b, m), -1, device=m0.device, dtype=m0.dtype)
             m1_ = torch.full((b, n), -1, device=m1.device, dtype=m1.dtype)
-            m0_[:, ind0] = torch.where(m0 == -1, -1, ind1.gather(1, m0.clamp(min=0)))
-            m1_[:, ind1] = torch.where(m1 == -1, -1, ind0.gather(1, m1.clamp(min=0)))
+            m0_[:, ind0] = torch.where(
+                m0 == -1, -1, ind1.gather(1, m0.clamp(min=0)))
+            m1_[:, ind1] = torch.where(
+                m1 == -1, -1, ind0.gather(1, m1.clamp(min=0)))
             mscores0_ = torch.zeros((b, m), device=mscores0.device)
             mscores1_ = torch.zeros((b, n), device=mscores1.device)
             mscores0_[:, ind0] = mscores0
             mscores1_[:, ind1] = mscores1
             m0, m1, mscores0, mscores1 = m0_, m1_, mscores0_, mscores1_
 
-        matches, mscores = [], []
-        for k in range(b):
-            valid = m0[k] > -1
-            matches.append(torch.stack([torch.where(valid)[0], m0[k][valid]], -1))
-            mscores.append(mscores0[k][valid])
-
-        return {
+        pred = {
             'matches0': m0,
             'matches1': m1,
             'matching_scores0': mscores0,
             'matching_scores1': mscores1,
             'stop': i+1,
-            'prune0': prune0,
-            'prune1': prune1,
             'matches': matches,
             'scores': mscores,
         }
+        if do_point_pruning:
+            pred.update(dict(prune0=prune0, prune1=prune1))
+        return pred
 
-    def conf_th(self, i: int) -> float:
+    def confidence_threshold(self, layer_index: int) -> float:
         """ scaled confidence threshold """
-        return np.clip(
-            0.8 + 0.1 * np.exp(-4.0 * i / self.conf.n_layers), 0, 1)
+        threshold = 0.8 + 0.1 * np.exp(-4.0 * layer_index / self.conf.n_layers)
+        return np.clip(threshold, 0, 1)
 
-    def get_mask(self, confidence: torch.Tensor, match: torch.Tensor,
-                 conf_th: float, match_th: float) -> torch.Tensor:
+    def get_pruning_mask(self, confidences: torch.Tensor, scores: torch.Tensor,
+                         layer_index: int) -> torch.Tensor:
         """ mask points which should be removed """
-        if conf_th and confidence is not None:
-            mask = torch.where(confidence > conf_th, match,
-                               match.new_tensor(1.0)) > match_th
-        else:
-            mask = match > match_th
-        return mask
+        threshold = self.confidence_threshold(layer_index)
+        if confidences is not None:
+            scores = torch.where(
+                confidences > threshold, scores, scores.new_tensor(1.0))
+        return scores > (1 - self.conf.width_confidence)
 
-    def stop(self, token0: torch.Tensor, token1: torch.Tensor,
-             conf_th: float, inl_th: float, seql: int) -> torch.Tensor:
+    def check_if_stop(self,
+                      confidences0: torch.Tensor,
+                      confidences1: torch.Tensor,
+                      layer_index: int, num_points: int) -> torch.Tensor:
         """ evaluate stopping condition"""
-        tokens = torch.cat([token0, token1], -1)
-        if conf_th:
-            pos = 1.0 - (tokens < conf_th).float().sum() / seql
-            return pos > inl_th
-        else:
-            return tokens.mean() > inl_th
+        confidences = torch.cat([confidences0, confidences1], -1)
+        threshold = self.confidence_threshold(layer_index)
+        pos = 1.0 - (confidences < threshold).float().sum() / num_points
+        return pos > self.conf.depth_confidence
