@@ -24,11 +24,12 @@ torch.backends.cudnn.deterministic = True
 def normalize_keypoints(
         kpts: torch.Tensor,
         size: torch.Tensor) -> torch.Tensor:
-    if isinstance(size, torch.Size):
-        size = torch.tensor(size)[None]
-    shift = size.float().to(kpts) / 2
-    scale = size.max(1).values.float().to(kpts) / 2
-    kpts = (kpts - shift[:, None]) / scale[:, None, None]
+    if not isinstance(size, torch.Tensor):
+        size = torch.tensor(size, device=kpts.device, dtype=kpts.dtype)
+    size = size.to(kpts)
+    shift = size / 2
+    scale = size.max(-1).values / 2
+    kpts = (kpts - shift[..., None, :]) / scale[..., None, None]
     return kpts
 
 
@@ -235,8 +236,8 @@ def filter_matches(scores: torch.Tensor, th: float):
     """ obtain matches from a log assignment matrix [Bx M+1 x N+1]"""
     max0, max1 = scores[:, :-1, :-1].max(2), scores[:, :-1, :-1].max(1)
     m0, m1 = max0.indices, max1.indices
-    mutual0 = torch.arange(m0.shape[1]).to(m0)[None] == m1.gather(1, m0)
-    mutual1 = torch.arange(m1.shape[1]).to(m1)[None] == m0.gather(1, m1)
+    mutual0 = torch.arange(m0.shape[1], device=m0.device)[None] == m1.gather(1, m0)
+    mutual1 = torch.arange(m1.shape[1], device=m1.device)[None] == m0.gather(1, m1)
     max0_exp = max0.values.exp()
     zero = max0_exp.new_tensor(0)
     mscores0 = torch.where(mutual0, max0_exp, zero)
@@ -246,8 +247,8 @@ def filter_matches(scores: torch.Tensor, th: float):
     else:
         valid0 = mutual0
     valid1 = mutual1 & valid0.gather(1, m1)
-    m0 = torch.where(valid0, m0, m0.new_tensor(-1))
-    m1 = torch.where(valid1, m1, m1.new_tensor(-1))
+    m0 = torch.where(valid0, m0, -1)
+    m1 = torch.where(valid1, m1, -1)
     return m0, m1, mscores0, mscores1
 
 
@@ -316,8 +317,6 @@ class LightGlue(nn.Module):
             state_dict = torch.load(str(path), map_location='cpu')
             self.load_state_dict(state_dict, strict=False)
 
-        print('Loaded LightGlue model')
-
     def forward(self, data: dict) -> dict:
         """
         Match keypoints and descriptors between two images
@@ -376,8 +375,8 @@ class LightGlue(nn.Module):
         encoding1 = self.posenc(kpts1)
 
         # GNN + final_proj + assignment
-        ind0 = torch.arange(0, m).to(device=kpts0.device)[None]
-        ind1 = torch.arange(0, n).to(device=kpts0.device)[None]
+        ind0 = torch.arange(0, m, device=kpts0.device)[None]
+        ind1 = torch.arange(0, n, device=kpts0.device)[None]
         prune0 = torch.ones_like(ind0)  # store layer where pruning is detected
         prune1 = torch.ones_like(ind1)
         dec, wic = self.conf.depth_confidence, self.conf.width_confidence
@@ -406,20 +405,20 @@ class LightGlue(nn.Module):
             prune0[:, ind0] += 1
             prune1[:, ind1] += 1
 
-        if wic > 0:  # scatter with indices after pruning
-            scores_, _ = self.log_assignment[i](desc0, desc1)
-            dt, dev = scores_.dtype, scores_.device
-            scores = torch.zeros(b, m+1, n+1, dtype=dt, device=dev)
-            scores[:, :-1, :-1] = -torch.inf
-            scores[:, ind0[0], -1] = scores_[:, :-1, -1]
-            scores[:, -1, ind1[0]] = scores_[:, -1, :-1]
-            x, y = torch.meshgrid(ind0[0], ind1[0], indexing='ij')
-            scores[:, x, y] = scores_[:, :-1, :-1]
-        else:
-            scores, _ = self.log_assignment[i](desc0, desc1)
-
+        scores, _ = self.log_assignment[i](desc0, desc1)
         m0, m1, mscores0, mscores1 = filter_matches(
             scores, self.conf.filter_threshold)
+
+        if wic > 0:  # scatter with indices after pruning
+            m0_ = torch.full((b, m), -1, device=m0.device, dtype=m0.dtype)
+            m1_ = torch.full((b, n), -1, device=m1.device, dtype=m1.dtype)
+            m0_[:, ind0] = torch.where(m0 == -1, -1, ind1.gather(1, m0.clamp(min=0)))
+            m1_[:, ind1] = torch.where(m1 == -1, -1, ind0.gather(1, m1.clamp(min=0)))
+            mscores0_ = torch.zeros((b, m), device=mscores0.device)
+            mscores1_ = torch.zeros((b, n), device=mscores1.device)
+            mscores0_[:, ind0] = mscores0
+            mscores1_[:, ind1] = mscores1
+            m0, m1, mscores0, mscores1 = m0_, m1_, mscores0_, mscores1_
 
         matches, mscores = [], []
         for k in range(b):
@@ -428,7 +427,6 @@ class LightGlue(nn.Module):
             mscores.append(mscores0[k][valid])
 
         return {
-            'log_assignment': scores,
             'matches0': m0,
             'matches1': m1,
             'matching_scores0': mscores0,

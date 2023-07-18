@@ -143,8 +143,6 @@ class SuperPoint(nn.Module):
         if mk is not None and mk <= 0:
             raise ValueError('max_num_keypoints must be positive or None')
 
-        print('Loaded SuperPoint model')
-
     def forward(self, data: dict) -> dict:
         """ Compute keypoints, scores, descriptors for image """
         for key in self.required_data_keys:
