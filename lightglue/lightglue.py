@@ -269,6 +269,15 @@ class LightGlue(nn.Module):
         'weights': None,
     }
 
+    # Point pruning involves an overhead (gather).
+    # Therefore, we only activate it if there are enough keypoints.
+    pruning_keypoint_thresholds = {
+        'cpu': -1,
+        'mps': 1024,
+        'cuda': 1024,
+        'flash': 1536,
+    }
+
     required_data_keys = [
         'image0', 'image1']
 
@@ -349,14 +358,15 @@ class LightGlue(nn.Module):
         for key in self.required_data_keys:
             assert key in data, f'Missing key {key} in data'
         data0, data1 = data['image0'], data['image1']
-        kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
-        b, m, _ = kpts0_.shape
-        b, n, _ = kpts1_.shape
+        kpts0, kpts1 = data0['keypoints'], data1['keypoints']
+        b, m, _ = kpts0.shape
+        b, n, _ = kpts1.shape
+        device = kpts0.device
         size0, size1 = data0.get('image_size'), data1.get('image_size')
         size0 = size0 if size0 is not None else data0['image'].shape[-2:][::-1]
         size1 = size1 if size1 is not None else data1['image'].shape[-2:][::-1]
-        kpts0 = normalize_keypoints(kpts0_, size=size0)
-        kpts1 = normalize_keypoints(kpts1_, size=size1)
+        kpts0 = normalize_keypoints(kpts0, size=size0)
+        kpts1 = normalize_keypoints(kpts1, size=size1)
 
         assert torch.all(kpts0 >= -1) and torch.all(kpts0 <= 1)
         assert torch.all(kpts1 >= -1) and torch.all(kpts1 <= 1)
@@ -381,9 +391,11 @@ class LightGlue(nn.Module):
         # GNN + final_proj + assignment
         do_early_stop = self.conf.depth_confidence > 0
         do_point_pruning = self.conf.width_confidence > 0
+        # We disable pruning on less than 1024 kpts b/c of gather overhead.
+        do_point_pruning &= (m*n)**0.5 > self.pruning_min_kpts(device)
         if do_point_pruning:
-            ind0 = torch.arange(0, m, device=kpts0.device)[None]
-            ind1 = torch.arange(0, n, device=kpts0.device)[None]
+            ind0 = torch.arange(0, m, device=device)[None]
+            ind1 = torch.arange(0, n, device=device)[None]
             # We store the index of the layer at which pruning is detected.
             prune0 = torch.ones_like(ind0)
             prune1 = torch.ones_like(ind1)
@@ -403,12 +415,14 @@ class LightGlue(nn.Module):
                 scores0, scores1 = self.log_assignment[i].scores(desc0, desc1)
                 mask0 = self.get_pruning_mask(token0, scores0, i)
                 mask1 = self.get_pruning_mask(token1, scores1, i)
-                ind0, ind1 = ind0[mask0][None], ind1[mask1][None]
-                desc0, desc1 = desc0[mask0][None], desc1[mask1][None]
-                if desc0.shape[-2] == 0 or desc1.shape[-2] == 0:
-                    break
-                encoding0 = encoding0[:, :, mask0][:, None]
-                encoding1 = encoding1[:, :, mask1][:, None]
+                keep0 = torch.where(mask0)[1]
+                keep1 = torch.where(mask1)[1]
+                ind0 = ind0.index_select(1, keep0)
+                ind1 = ind1.index_select(1, keep1)
+                desc0 = desc0.index_select(1, keep0)
+                desc1 = desc1.index_select(1, keep1)
+                encoding0 = encoding0.index_select(-2, keep0)
+                encoding1 = encoding1.index_select(-2, keep1)
                 prune0[:, ind0] += 1
                 prune1[:, ind1] += 1
 
@@ -476,3 +490,9 @@ class LightGlue(nn.Module):
         threshold = self.confidence_thresholds[layer_index]
         ratio_confident = 1.0 - (confidences < threshold).float().sum() / num_points
         return ratio_confident > self.conf.depth_confidence
+
+    def pruning_min_kpts(self, device: torch.device):
+        if self.conf.flash and FLASH_AVAILABLE and device.type == 'cuda':
+            return self.pruning_keypoint_thresholds['flash']
+        else:
+            return self.pruning_keypoint_thresholds[device.type]
