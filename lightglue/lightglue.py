@@ -460,11 +460,11 @@ class LightGlue(nn.Module):
     def get_pruning_mask(self, confidences: torch.Tensor, scores: torch.Tensor,
                          layer_index: int) -> torch.Tensor:
         """ mask points which should be removed """
-        threshold = self.confidence_threshold(layer_index)
-        if confidences is not None:
-            scores = torch.where(
-                confidences > threshold, scores, scores.new_tensor(1.0))
-        return scores > (1 - self.conf.width_confidence)
+        keep = scores > (1 - self.conf.width_confidence)
+        if confidences is not None:  # Low-confidence points are never pruned.
+            threshold = self.confidence_threshold(layer_index)
+            keep |= confidences <= threshold
+        return keep
 
     def check_if_stop(self,
                       confidences0: torch.Tensor,
@@ -473,5 +473,5 @@ class LightGlue(nn.Module):
         """ evaluate stopping condition"""
         confidences = torch.cat([confidences0, confidences1], -1)
         threshold = self.confidence_threshold(layer_index)
-        pos = 1.0 - (confidences < threshold).float().sum() / num_points
-        return pos > self.conf.depth_confidence
+        ratio_confident = 1.0 - (confidences < threshold).float().sum() / num_points
+        return ratio_confident > self.conf.depth_confidence
