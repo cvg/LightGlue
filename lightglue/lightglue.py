@@ -307,6 +307,8 @@ class LightGlue(nn.Module):
             [MatchAssignment(d) for _ in range(n)])
         self.token_confidence = nn.ModuleList([
             TokenConfidence(d) for _ in range(n-1)])
+        self.confidence_thresholds = [
+            self.confidence_threshold(i) for i in range(self.conf.n_layers)]
 
         if features is not None:
             fname = f'{conf.weights}_{self.version}.pth'.replace('.', '-')
@@ -462,8 +464,7 @@ class LightGlue(nn.Module):
         """ mask points which should be removed """
         keep = scores > (1 - self.conf.width_confidence)
         if confidences is not None:  # Low-confidence points are never pruned.
-            threshold = self.confidence_threshold(layer_index)
-            keep |= confidences <= threshold
+            keep |= confidences <= self.confidence_thresholds[layer_index]
         return keep
 
     def check_if_stop(self,
@@ -472,6 +473,6 @@ class LightGlue(nn.Module):
                       layer_index: int, num_points: int) -> torch.Tensor:
         """ evaluate stopping condition"""
         confidences = torch.cat([confidences0, confidences1], -1)
-        threshold = self.confidence_threshold(layer_index)
+        threshold = self.confidence_thresholds[layer_index]
         ratio_confident = 1.0 - (confidences < threshold).float().sum() / num_points
         return ratio_confident > self.conf.depth_confidence
