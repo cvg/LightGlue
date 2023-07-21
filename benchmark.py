@@ -79,8 +79,8 @@ if __name__ == '__main__':
     inputs = {
         'easy': (load_image(images / 'DSC_0411.JPG'),
                  load_image(images / 'DSC_0410.JPG')),
-        'hard': (load_image(images / 'sacre_coeur1.jpg'),
-                 load_image(images / 'sacre_coeur2.jpg'))
+        'difficult': (load_image(images / 'sacre_coeur1.jpg'),
+                      load_image(images / 'sacre_coeur2.jpg'))
     }
 
     configs = {
