@@ -91,14 +91,15 @@ class Attention(nn.Module):
 
     def forward(self, q, k, v) -> torch.Tensor:
         if self.enable_flash and q.device.type == 'cuda':
+            if hasattr(F, 'scaled_dot_product_attention'):
+                # use torch 2.0 scaled_dot_product_attention with flash
+                args = [x.half().contiguous() for x in [q, k, v]]
+                with torch.backends.cuda.sdp_kernel(enable_flash=True):
+                    return F.scaled_dot_product_attention(*args).to(q.dtype)
             if FlashCrossAttention:
                 q, k, v = [x.transpose(-2, -3) for x in [q, k, v]]
                 m = self.flash_(q.half(), torch.stack([k, v], 2).half())
                 return m.transpose(-2, -3).to(q.dtype)
-            else:  # use torch 2.0 scaled_dot_product_attention with flash
-                args = [x.half().contiguous() for x in [q, k, v]]
-                with torch.backends.cuda.sdp_kernel(enable_flash=True):
-                    return F.scaled_dot_product_attention(*args).to(q.dtype)
         elif hasattr(F, 'scaled_dot_product_attention'):
             args = [x.contiguous() for x in [q, k, v]]
             return F.scaled_dot_product_attention(*args).to(q.dtype)
