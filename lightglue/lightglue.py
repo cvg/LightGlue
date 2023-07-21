@@ -227,10 +227,8 @@ class MatchAssignment(nn.Module):
         scores = sigmoid_log_double_softmax(sim, z0, z1)
         return scores, sim
 
-    def scores(self, desc0: torch.Tensor, desc1: torch.Tensor):
-        m0 = torch.sigmoid(self.matchability(desc0)).squeeze(-1)
-        m1 = torch.sigmoid(self.matchability(desc1)).squeeze(-1)
-        return m0, m1
+    def get_matchability(self, desc: torch.Tensor):
+        return torch.sigmoid(self.matchability(desc)).squeeze(-1)
 
 
 def filter_matches(scores: torch.Tensor, th: float):
@@ -392,8 +390,6 @@ class LightGlue(nn.Module):
         # GNN + final_proj + assignment
         do_early_stop = self.conf.depth_confidence > 0
         do_point_pruning = self.conf.width_confidence > 0
-        # We disable pruning on less than 1024 kpts b/c of gather overhead.
-        do_point_pruning &= (m*n)**0.5 > self.pruning_min_kpts(device)
         if do_point_pruning:
             ind0 = torch.arange(0, m, device=device)[None]
             ind1 = torch.arange(0, n, device=device)[None]
@@ -412,19 +408,21 @@ class LightGlue(nn.Module):
                 token0, token1 = self.token_confidence[i](desc0, desc1)
                 if self.check_if_stop(token0, token1, i, m+n):
                     break
-            if do_point_pruning:
-                scores0, scores1 = self.log_assignment[i].scores(desc0, desc1)
+            if do_point_pruning and m > self.pruning_min_kpts(device):
+                scores0 = self.log_assignment[i].get_matchability(desc0)
                 mask0 = self.get_pruning_mask(token0, scores0, i)
-                mask1 = self.get_pruning_mask(token1, scores1, i)
                 keep0 = torch.where(mask0)[1]
-                keep1 = torch.where(mask1)[1]
                 ind0 = ind0.index_select(1, keep0)
-                ind1 = ind1.index_select(1, keep1)
                 desc0 = desc0.index_select(1, keep0)
-                desc1 = desc1.index_select(1, keep1)
                 encoding0 = encoding0.index_select(-2, keep0)
-                encoding1 = encoding1.index_select(-2, keep1)
                 prune0[:, ind0] += 1
+            if do_point_pruning and n > self.pruning_min_kpts(device):
+                scores1 = self.log_assignment[i].get_matchability(desc1)
+                mask1 = self.get_pruning_mask(token1, scores1, i)
+                keep1 = torch.where(mask1)[1]
+                ind1 = ind1.index_select(1, keep1)
+                desc1 = desc1.index_select(1, keep1)
+                encoding1 = encoding1.index_select(-2, keep1)
                 prune1[:, ind1] += 1
 
         scores, _ = self.log_assignment[i](desc0, desc1)
