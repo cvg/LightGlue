@@ -108,7 +108,7 @@ if __name__ == '__main__':
     extractor = extractor.eval().to(device)
     figsize = (len(inputs)*4.5, 4.5)
     fig, axes = plt.subplots(1, len(inputs), sharey=True, figsize=figsize)
-    fig.canvas.manager.set_window_title(f'LightGlue benchmark on device: {device.type}')
+    fig.canvas.manager.set_window_title(f'LightGlue benchmark ({device.type})')
 
     for title, ax in zip(inputs.keys(), axes):
         ax.set_xscale('log', base=2)
@@ -122,8 +122,8 @@ if __name__ == '__main__':
     for name, conf in configs.items():
         print('Run benchmark for:', name)
         torch.cuda.empty_cache()
-        matcher = LightGlue(features='superpoint', flash=not args.no_flash,
-                            **conf)
+        matcher = LightGlue(
+            features='superpoint', flash=not args.no_flash, **conf)
         if args.no_prune_thresholds:
             matcher.pruning_keypoint_thresholds = {
                 k: -1 for k in matcher.pruning_keypoint_thresholds}
