@@ -175,7 +175,7 @@ class CrossTransformer(nn.Module):
         qk0, qk1, v0, v1 = map(
             lambda t: t.unflatten(-1, (self.heads, -1)).transpose(1, 2),
             (qk0, qk1, v0, v1))
-        if self.flash is not None:
+        if self.flash is not None and qk0.device.type == 'cuda':
             m0 = self.flash(qk0, qk1, v1)
             m1 = self.flash(qk1, qk0, v0)
         else:
