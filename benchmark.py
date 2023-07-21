@@ -117,7 +117,7 @@ if __name__ == '__main__':
         ax.set_title(title)
 
         ax.set_xlabel("# keypoints")
-        ax.set_xlabel("Latency [ms]")
+        ax.set_ylabel("Latency [ms]")
 
     for name, conf in configs.items():
         print('Run benchmark for:', name)
