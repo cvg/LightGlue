@@ -58,6 +58,8 @@ if __name__ == '__main__':
                         default='auto', help='device to benchmark on')
     parser.add_argument('--no_flash', action='store_true',
                         help='disable FlashAttention')
+    parser.add_argument('--no_prune_thresholds', action='store_true',
+                        help='disable pruning thresholds (i.e. always do pruning)')
     parser.add_argument('--add_superglue', action='store_true',
                         help='add SuperGlue to the benchmark (requires hloc)')
     parser.add_argument('--repeat', '--r', type=int, default=100,
@@ -122,6 +124,9 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
         matcher = LightGlue(features='superpoint', flash=not args.no_flash,
                             **conf)
+        if args.no_prune_thresholds:
+            matcher.pruning_keypoint_thresholds = {
+                k: -1 for k in matcher.pruning_keypoint_thresholds}
         matcher = matcher.eval().to(device)
         for (pair_name, ax) in zip(inputs.keys(), axes):
             image0, image1 = [x.to(device) for x in inputs[pair_name]]
