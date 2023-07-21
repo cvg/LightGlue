@@ -72,8 +72,8 @@ class TokenConfidence(nn.Module):
     def forward(self, desc0: torch.Tensor, desc1: torch.Tensor):
         """ get confidence tokens """
         return (
-            self.token(desc0.detach().float()).squeeze(-1),
-            self.token(desc1.detach().float()).squeeze(-1))
+            self.token(desc0.detach().to(dtype=desc0.dtype)).squeeze(-1),
+            self.token(desc1.detach().to(dtype=desc1.dtype)).squeeze(-1))
 
 
 class Attention(nn.Module):
