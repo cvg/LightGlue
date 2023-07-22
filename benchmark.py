@@ -14,7 +14,7 @@ from lightglue.utils import load_image
 torch.set_grad_enabled(False)
 
 
-def benchmark(matcher, data, device, r=100):
+def measure(matcher, data, device, r=100):
     timings = np.zeros((r, 1))
     if device.type == 'cuda':
         starter = torch.cuda.Event(enable_timing=True)
@@ -62,6 +62,8 @@ if __name__ == '__main__':
                         help='disable pruning thresholds (i.e. always do pruning)')
     parser.add_argument('--add_superglue', action='store_true',
                         help='add SuperGlue to the benchmark (requires hloc)')
+    parser.add_argument('--measure', default='throughput',
+                        choices=['time', 'log-time', 'throughput'])
     parser.add_argument('--repeat', '--r', type=int, default=100,
                         help='repetitions of measurements')
     parser.add_argument('--num_keypoints', nargs="+", type=int,
@@ -99,7 +101,7 @@ if __name__ == '__main__':
 
     sg_configs = {
         'SG': {},
-        'SG-fast': {'sinkhorn_iterations': 3}
+        'SG-fast': {'sinkhorn_iterations': 5}
     }
 
     results = {k: defaultdict(list) for k, v in inputs.items()}
@@ -113,11 +115,18 @@ if __name__ == '__main__':
     for title, ax in zip(inputs.keys(), axes):
         ax.set_xscale('log', base=2)
         ax.set_xticks(args.num_keypoints, args.num_keypoints)
+        if args.measure == 'log-time':
+            ax.set_yscale('log')
+            yticks = [10**x for x in range(6)]
+            ax.set_yticks(yticks, yticks)
         ax.grid()
         ax.set_title(title)
 
         ax.set_xlabel("# keypoints")
-        ax.set_ylabel("Latency [ms]")
+        if args.measure == 'throughput':
+            ax.set_ylabel("Throughput [pairs/s]")
+        else:
+            ax.set_ylabel("Latency [ms]")
 
     for name, conf in configs.items():
         print('Run benchmark for:', name)
@@ -135,10 +144,11 @@ if __name__ == '__main__':
                 extractor.conf['max_num_keypoints'] = num_kpts
                 feats0 = extractor.extract(image0)
                 feats1 = extractor.extract(image1)
-                runtime = benchmark(matcher,
-                                    {'image0': feats0, 'image1': feats1},
-                                    device, r=args.repeat)
-                results[pair_name][name].append(runtime['mean'])
+                runtime = measure(matcher,
+                                  {'image0': feats0, 'image1': feats1},
+                                  device, r=args.repeat)['mean']
+                results[pair_name][name].append(
+                    1000/runtime if args.measure == 'throughput' else runtime)
             ax.plot(args.num_keypoints, results[pair_name][name], label=name,
                     marker='o')
 
@@ -166,8 +176,9 @@ if __name__ == '__main__':
                     data['scores1'] = data['keypoint_scores1']
                     data['descriptors0'] = data['descriptors0'].transpose(-1, -2)
                     data['descriptors1'] = data['descriptors1'].transpose(-1, -2)
-                    runtime = benchmark(matcher, data, device, r=args.repeat)
-                    results[pair_name][name].append(runtime['mean'])
+                    runtime = measure(matcher, data, device, r=args.repeat)['mean']
+                    results[pair_name][name].append(
+                        1000/runtime if args.measure == 'throughput' else runtime)
                 ax.plot(args.num_keypoints, results[pair_name][name], label=name,
                         marker='o')
 
@@ -175,4 +186,5 @@ if __name__ == '__main__':
         print_as_table(runtimes, name, args.num_keypoints)
 
     axes[0].legend()
+    fig.tight_layout()
     plt.show()
