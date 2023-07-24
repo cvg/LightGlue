@@ -62,7 +62,7 @@ if __name__ == '__main__':
                         help='disable pruning thresholds (i.e. always do pruning)')
     parser.add_argument('--add_superglue', action='store_true',
                         help='add SuperGlue to the benchmark (requires hloc)')
-    parser.add_argument('--measure', default='throughput',
+    parser.add_argument('--measure', default='time',
                         choices=['time', 'log-time', 'throughput'])
     parser.add_argument('--repeat', '--r', type=int, default=100,
                         help='repetitions of measurements')
