@@ -113,6 +113,32 @@ The maximum speed is obtained with [FlashAttention](https://arxiv.org/abs/2205.1
 
 </details>
 
+
+To further optimize the inference time for LightGlue, we provide a [benchmark script](https://github.com/cvg/LightGlue/blob/main/benchmark.py) which evaluates the inference time on test images. 
+
+```
+python benchmark.py [--device cuda] [--add_superglue] [--num_keypoints 512 1024 2048 4096] [--measure throughput]
+```
+<details>
+<summary>[Benchmark results - click to expand]</summary>
+
+<p align="center">
+  <a><img src="assets/benchmark.png" alt="Logo" width=50%></a>
+  <br>
+  <em>Depth adaptivity significantly increases the throughput for easy pairs, while point pruning speeds up matching for hard pairs with many keypoints. Benchmark on RTX 3080 with FlashAttention.</em>
+</p>
+
+Point pruning requires gathering descriptors during the forward pass, and this overhead eliminates the benefits of point pruning in some cases (= few keypoints). Consequently, point pruning is only used when there are more than N keypoints in an image, and N is different per device. The defaults we provide are for current hardware (RTX 30xx), and we suggest running the benchmark script once and to adjust the thresholds for your hardware accordingly:
+
+```
+python benchmark.py --measure throughput --no_prune_thresholds
+```
+
+Then, set `LightGlue.pruning_keypoint_thresholds` for your device to the minimal value where 'LG-prune' is faster than 'LG-full' for your device.
+
+We are working on solutions to minimize this overhead.
+</details>
+
 ## Other links
 - [hloc - the visual localization toolbox](https://github.com/cvg/Hierarchical-Localization/): run LightGlue for Structure-from-Motion and visual localization.
 - [LightGlue-ONNX](https://github.com/fabio-sim/LightGlue-ONNX): export LightGlue to the Open Neural Network Exchange format.
