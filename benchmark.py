@@ -98,9 +98,9 @@ if __name__ == '__main__':
         # 'LG-prune': {
         #     'depth_confidence': -1,
         # },
-        'LG-depth-compile': {
-            'width_confidence': -1,
-        },
+        # 'LG-depth-compile': {
+        #     'width_confidence': -1,
+        # },
         # 'LG-adaptive': {}
     }
 
@@ -119,7 +119,8 @@ if __name__ == '__main__':
 
     for title, ax in zip(inputs.keys(), axes):
         ax.set_xscale('log', base=2)
-        ax.set_xticks(args.num_keypoints, args.num_keypoints)
+        bases = [2**x for x in range(7, 16)]
+        ax.set_xticks(bases, bases)
         if args.measure == 'log-time':
             ax.set_yscale('log')
             yticks = [10**x for x in range(6)]
@@ -129,14 +130,13 @@ if __name__ == '__main__':
 
         ax.set_xlabel("# keypoints")
         if args.measure == 'throughput':
-            ax.set_ylabel("Throughput [pairs/s]")
+            ax.set_ylabel("Throughput [pairs/s]")   
         else:
             ax.set_ylabel("Latency [ms]")
 
     for name, conf in configs.items():
         print('Run benchmark for:', name)
         torch.cuda.empty_cache()
-        torch._dynamo.reset()
         matcher = LightGlue(
             features='superpoint', flash=not args.no_flash, **conf)
         if args.no_prune_thresholds:
@@ -144,7 +144,8 @@ if __name__ == '__main__':
                 k: -1 for k in matcher.pruning_keypoint_thresholds}
         matcher = matcher.eval().to(device)
         if name.endswith('compile'):
-            torch.set_float32_matmul_precision('high')
+            import torch._dynamo
+            torch._dynamo.reset()  # avoid buffer overflow
             matcher.compile()
         for (pair_name, ax) in zip(inputs.keys(), axes):
             image0, image1 = [x.to(device) for x in inputs[pair_name]]

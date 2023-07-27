@@ -36,8 +36,7 @@ def normalize_keypoints(
 
 
 def rotate_half(x: torch.Tensor) -> torch.Tensor:
-    # x = x.unflatten(-1, (-1, 2))
-    x = x.view(*x.shape[:-1], -1, 2)
+    x = x.unflatten(-1, (-1, 2))
     x1, x2 = x.unbind(dim=-1)
     return torch.stack((-x2, x1), dim=-1).flatten(start_dim=-2)
 
@@ -95,22 +94,27 @@ class Attention(nn.Module):
         if self.has_sdp:
             torch.backends.cuda.enable_flash_sdp(allow_flash)
 
-    def forward(self, q, k, v) -> torch.Tensor:
+    def forward(self, q, k, v, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         if self.enable_flash and q.device.type == 'cuda':
             # use torch 2.0 scaled_dot_product_attention with flash
             if self.has_sdp:
                 args = [x.half().contiguous() for x in [q, k, v]]
-                return F.scaled_dot_product_attention(*args).to(q.dtype)
+                v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)
+                return v if mask is None else v.nan_to_num()
             else:
                 q, k, v = [x.transpose(-2, -3).contiguous() for x in [q, k, v]]
                 m = self.flash_(q.half(), torch.stack([k, v], 2).half())
                 return m.transpose(-2, -3).to(q.dtype).clone()
         elif self.has_sdp:
             args = [x.contiguous() for x in [q, k, v]]
-            return F.scaled_dot_product_attention(*args).to(q.dtype)
+            v = F.scaled_dot_product_attention(*args, attn_mask=mask)
+            return v if mask is None else v.nan_to_num()
         else:
             s = q.shape[-1] ** -0.5
-            attn = F.softmax(torch.einsum('...id,...jd->...ij', q, k) * s, -1)
+            sim = torch.einsum('...id,...jd->...ij', q, k) * s
+            if mask is not None:
+                sim.masked_fill(~mask, -float('inf'))
+            attn = F.softmax(sim, -1)
             return torch.einsum('...ij,...jd->...id', attn, v)
 
 
@@ -132,24 +136,18 @@ class Transformer(nn.Module):
             nn.Linear(2*embed_dim, embed_dim)
         )
 
-    def _forward(self, x: torch.Tensor,
-                 encoding: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor,
+                encoding: torch.Tensor,
+                mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         qkv = self.Wqkv(x)
-        qkv = qkv.view(*x.shape[:2], self.num_heads, -1, 3).transpose(1, 2)
+        qkv = qkv.unflatten(-1, (self.num_heads, -1, 3)).transpose(1, 2)
         q, k, v = qkv[..., 0], qkv[..., 1], qkv[..., 2]
         q = apply_cached_rotary_emb(encoding, q)
         k = apply_cached_rotary_emb(encoding, k)
-        context = self.inner_attn(q, k, v)
+        context = self.inner_attn(q, k, v, mask=mask)
         message = self.out_proj(
             context.transpose(1, 2).flatten(start_dim=-2))
         return x + self.ffn(torch.cat([x, message], -1))
-
-    def forward(self, x0: torch.Tensor, x1: torch.Tensor,
-                encoding0: torch.Tensor, encoding1: torch.Tensor
-                ) -> Tuple[torch.Tensor, torch.Tensor]:
-        x0 = self._forward(x0, encoding0)
-        x1 = self._forward(x1, encoding1)
-        return x0, x1
 
 
 class CrossTransformer(nn.Module):
@@ -169,7 +167,6 @@ class CrossTransformer(nn.Module):
             nn.GELU(),
             nn.Linear(2*embed_dim, embed_dim)
         )
-
         if flash and FLASH_AVAILABLE:
             self.flash = Attention(True)
         else:
@@ -178,39 +175,67 @@ class CrossTransformer(nn.Module):
     def map_(self, func: Callable, x0: torch.Tensor, x1: torch.Tensor):
         return func(x0), func(x1)
 
-    def _forward(self, x0: torch.Tensor, x1: torch.Tensor):
-        qk0, qk1 = self.map_(self.to_qk, x0, x1)
-        v1 = self.to_v(x1)
-        qk0, qk1, v1 = map(
-            lambda t: t.view(*x0.shape[:2], self.heads, 64).transpose(1, 2),
-            (qk0, qk1, v1))
-        m0 = self.flash(qk0, qk1, v1).transpose(1, 2).flatten(start_dim=-2)
-        x0 = x0 + self.ffn(torch.cat([x0, self.to_out(m0)], -1))
-        return x0
-
-    def forward(self, x0: torch.Tensor, x1: torch.Tensor) -> List[torch.Tensor]:
+    def forward(self, x0: torch.Tensor, x1: torch.Tensor,
+                mask: Optional[torch.Tensor] = None) -> List[torch.Tensor]:
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
         qk0, qk1, v0, v1 = map(
             lambda t: t.unflatten(-1, (self.heads, -1)).transpose(1, 2),
-            # lambda t: t.view(*x0.shape[:2], self.heads, 64).transpose(1, 2),
             (qk0, qk1, v0, v1))
         if self.flash is not None and qk0.device.type == 'cuda':
-            m0 = self.flash(qk0, qk1, v1)
-            m1 = self.flash(qk1, qk0, v0)
+            m0 = self.flash(qk0, qk1, v1, mask)
+            m1 = self.flash(qk1, qk0, v0, mask.transpose(-1, -2) if mask is not None else None)
         else:
             qk0, qk1 = qk0 * self.scale**0.5, qk1 * self.scale**0.5
-            sim = torch.einsum('b h i d, b h j d -> b h i j', qk0, qk1)
+            sim = torch.einsum('bhid, bhjd -> bhij', qk0, qk1)
+            if mask is not None:
+                sim = sim.masked_fill(~mask, -float('inf'))
             attn01 = F.softmax(sim, dim=-1)
             attn10 = F.softmax(sim.transpose(-2, -1).contiguous(), dim=-1)
             m0 = torch.einsum('bhij, bhjd -> bhid', attn01, v1)
             m1 = torch.einsum('bhji, bhjd -> bhid', attn10.transpose(-2, -1), v0)
+            if mask is not None:
+                m0, m1 = m0.nan_to_num(), m1.nan_to_num()
         m0, m1 = self.map_(lambda t: t.transpose(1, 2).flatten(start_dim=-2),
                            m0, m1)
         m0, m1 = self.map_(self.to_out, m0, m1)
         x0 = x0 + self.ffn(torch.cat([x0, m0], -1))
         x1 = x1 + self.ffn(torch.cat([x1, m1], -1))
         return x0, x1
+
+
+class TransformerLayer(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.self_attn = Transformer(*args, **kwargs)
+        self.cross_attn = CrossTransformer(*args, **kwargs)
+
+    def forward(self,
+                desc0, desc1,
+                encoding0, encoding1,
+                mask0: Optional[torch.Tensor] = None,
+                mask1: Optional[torch.Tensor] = None):
+        if mask0 is not None and mask1 is not None:
+            return self.masked_forward(
+                desc0, desc1, encoding0, encoding1,
+                mask0, mask1
+            )
+        else:
+            desc0 = self.self_attn(desc0, encoding0)
+            desc1 = self.self_attn(desc1, encoding1)
+            return self.cross_attn(desc0, desc1)
+
+    # This part is compiled and allows padding inputs
+    def masked_forward(
+            self, desc0, desc1,
+            encoding0, encoding1,
+            mask0, mask1):
+        mask = mask0 & mask1.transpose(-1, -2)
+        mask0 = mask0 & mask0.transpose(-1, -2)
+        mask1 = mask1 & mask1.transpose(-1, -2)
+        desc0 = self.self_attn(desc0, encoding0, mask0)
+        desc1 = self.self_attn(desc1, encoding1, mask1)
+        return self.cross_attn(desc0, desc1, mask)
 
 
 def sigmoid_log_double_softmax(
@@ -323,10 +348,11 @@ class LightGlue(nn.Module):
         self.posenc = LearnableFourierPositionalEncoding(2, head_dim, head_dim)
 
         h, n, d = conf.num_heads, conf.n_layers, conf.descriptor_dim
-        self.self_attn = nn.ModuleList(
-            [Transformer(d, h, conf.flash) for _ in range(n)])
-        self.cross_attn = nn.ModuleList(
-            [CrossTransformer(d, h, conf.flash) for _ in range(n)])
+
+        self.transformers = nn.ModuleList(
+            [TransformerLayer(d, h, conf.flash) for _ in range(n)]
+        )
+
         self.log_assignment = nn.ModuleList(
             [MatchAssignment(d) for _ in range(n)])
         self.token_confidence = nn.ModuleList([
@@ -334,6 +360,7 @@ class LightGlue(nn.Module):
         self.register_buffer('confidence_thresholds', torch.Tensor([
             self.confidence_threshold(i) for i in range(self.conf.n_layers)]))
 
+        state_dict = None
         if features is not None:
             fname = f'{conf.weights}_{self.version}.pth'.replace('.', '-')
             state_dict = torch.hub.load_state_dict_from_url(
@@ -343,26 +370,28 @@ class LightGlue(nn.Module):
             path = Path(__file__).parent
             path = path / 'weights/{}.pth'.format(self.conf.weights)
             state_dict = torch.load(str(path), map_location='cpu')
+
+        if state_dict:
+            # rename old state dict entries
+            for i in range(self.conf.n_layers):
+                pattern = f'self_attn.{i}', f'transformers.{i}.self_attn'
+                state_dict = {k.replace(*pattern): v for k, v in state_dict.items()}
+                pattern = f'cross_attn.{i}', f'transformers.{i}.cross_attn'
+                state_dict = {k.replace(*pattern): v for k, v in state_dict.items()}
             self.load_state_dict(state_dict, strict=False)
 
-        self.layers = [self.layer(i) for i in range(self.conf.n_layers)]
+        # static lengths LightGlue is compiled for (only used with torch.compile)
         self.static_lengths = None
 
     def compile(self, mode='reduce-overhead', device='cuda',
-                static_lengths=[256, 512, 1024, 2048, 4096]):
-        import torch._dynamo
-
-        def generate_input(s):
-            desc0 = torch.ones([1, s, self.conf.descriptor_dim], device=device)
-            embed_dim = self.conf.descriptor_dim // self.conf.num_heads
-            encoding0 = torch.rand([2, 1, 1, s, embed_dim], device=device)
-            return desc0, desc0, encoding0, encoding0
+                static_lengths=[256, 512, 768, 1024, 1280, 1536]):
+        if self.conf.width_confidence != -1:
+            raise NotImplementedError(
+                'Adaptive width is not supported with compilation.')
 
         for i in range(self.conf.n_layers):
-            self.layers[i] = torch.compile(self.layers[i], mode=mode, fullgraph=True)
-            if static_lengths is not None:
-                [self.layers[i](*generate_input(s)) for s in static_lengths]
-                self.layers[i] = torch._dynamo.run(self.layers[i])
+            self.transformers[i].masked_forward = torch.compile(
+                self.transformers[i].masked_forward, mode=mode, fullgraph=True)
 
         self.static_lengths = static_lengths
 
@@ -390,20 +419,17 @@ class LightGlue(nn.Module):
         with torch.autocast(enabled=self.conf.mp, device_type='cuda'):
             return self._forward(data)
 
+    def pad_to_length(self, x: torch.Tensor, length: int) -> Tuple[torch.Tensor]:
+        if length <= x.shape[-2]:
+            return x, torch.ones_like(x[..., :1], dtype=torch.bool)
+        pad = torch.ones(*x.shape[:-2], length-x.shape[-2], x.shape[-1],
+                         device=x.device, dtype=x.dtype)
+        y = torch.cat([x, pad], dim=-2)
+        mask = torch.zeros(*y.shape[:-1], 1, dtype=torch.bool, device=x.device)
+        mask[..., :x.shape[-2], :] = True
+        return y, mask
 
-    def layer(self, k):
-        def selfcross(i0: torch.Tensor, i1: torch.Tensor, enc0: torch.Tensor, enc1: torch.Tensor):
-            s0, s1 = self.self_attn[k](i0, i1, enc0, enc1)
-            c0, c1 = self.cross_attn[k](s0, s1)
-            return c0, c1
-        return selfcross
-    
-    def layer_fn(self, self_attn, cross_attn, i0, i1, enc0, enc1):
-        s0, s1 = self_attn(i0, i1, enc0, enc1)
-        c0, c1 = cross_attn(s0, s1)
-        return c0, c1
-
-    def forward(self, data: dict) -> dict:
+    def _forward(self, data: dict) -> dict:
         for key in self.required_data_keys:
             assert key in data, f'Missing key {key} in data'
         data0, data1 = data['image0'], data['image1']
@@ -412,13 +438,8 @@ class LightGlue(nn.Module):
         b, n, _ = kpts1_.shape
         device = kpts0_.device
         size0, size1 = data0.get('image_size'), data1.get('image_size')
-        # size0 = size0 if size0 is not None else data0['image'].shape[-2:][::-1]
-        # size1 = size1 if size1 is not None else data1['image'].shape[-2:][::-1]
         kpts0 = normalize_keypoints(kpts0_, size0).clone()
         kpts1 = normalize_keypoints(kpts1_, size1).clone()
-
-        # assert torch.all(kpts0 >= -1) and torch.all(kpts0 <= 1)
-        # assert torch.all(kpts1 >= -1) and torch.all(kpts1 <= 1)
 
         desc0 = data0['descriptors'].detach()
         desc1 = data1['descriptors'].detach()
@@ -430,6 +451,14 @@ class LightGlue(nn.Module):
             desc0 = desc0.half()
             desc1 = desc1.half()
 
+        mask0, mask1 = None, None
+        c = max(m, n)
+        if self.static_lengths and c <= max(self.static_lengths):
+            kn = min([k for k in self.static_lengths if k >= c])
+            desc0, mask0 = self.pad_to_length(desc0, kn)
+            desc1, mask1 = self.pad_to_length(desc1, kn)
+            kpts0, _ = self.pad_to_length(kpts0, kn)
+            kpts1, _ = self.pad_to_length(kpts1, kn)
         desc0 = self.input_proj(desc0)
         desc1 = self.input_proj(desc1)
         # cache positional embeddings
@@ -448,16 +477,15 @@ class LightGlue(nn.Module):
             prune1 = torch.ones_like(ind1)
         token0, token1 = None, None
         for i in range(self.conf.n_layers):
-            # sdesc0_, sdesc1_ = self.self_attn[i](
-            #     desc0, desc1, encoding0, encoding1)
-            # desc0, desc1 = self.cross_attn[i](sdesc0_, sdesc1_)
-            desc0, desc1 = self.layers[i](desc0, desc1, encoding0, encoding1)
+            desc0, desc1 = self.transformers[i](desc0, desc1,
+                                                encoding0, encoding1,
+                                                mask0=mask0, mask1=mask1)
             if i == self.conf.n_layers - 1:
                 continue  # no early stopping or adaptive width at last layer
 
             if do_early_stop:
                 token0, token1 = self.token_confidence[i](desc0, desc1)
-                if self.check_if_stop(token0, token1, i, m+n):
+                if self.check_if_stop(token0[..., :m, :], token1[..., :n, :], i, m+n):
                     break
             if do_point_pruning and desc0.shape[-2] > pruning_th:
                 scores0 = self.log_assignment[i].get_matchability(desc0)
@@ -476,6 +504,7 @@ class LightGlue(nn.Module):
                 encoding1 = encoding1.index_select(-2, keep1)
                 prune1[:, ind1] += 1
 
+        desc0, desc1 = desc0[..., :m, :], desc1[..., :n, :]
         scores, _ = self.log_assignment[i](desc0, desc1)
         m0, m1, mscores0, mscores1 = filter_matches(
             scores, self.conf.filter_threshold)
