@@ -290,7 +290,7 @@ class LightGlue(nn.Module):
         'cpu': -1,
         'mps': 1024,
         'cuda': 1024,
-        'flash': -1,
+        'flash': 1536,
     }
 
     required_data_keys = [
