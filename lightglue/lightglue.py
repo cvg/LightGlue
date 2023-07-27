@@ -411,7 +411,7 @@ class LightGlue(nn.Module):
         b, m, _ = kpts0_.shape
         b, n, _ = kpts1_.shape
         device = kpts0_.device
-        size0, size1 = data0.get('image_sixze'), data1.get('image_sixze')
+        size0, size1 = data0.get('image_size'), data1.get('image_size')
         # size0 = size0 if size0 is not None else data0['image'].shape[-2:][::-1]
         # size1 = size1 if size1 is not None else data1['image'].shape[-2:][::-1]
         kpts0 = normalize_keypoints(kpts0_, size0).clone()
