@@ -211,7 +211,7 @@ class SuperPoint(nn.Module):
         return {
             'keypoints': torch.stack(keypoints, 0),
             'keypoint_scores': torch.stack(scores, 0),
-            'descriptors': torch.stack(descriptors, 0).transpose(-1, -2),
+            'descriptors': torch.stack(descriptors, 0).transpose(-1, -2).contiguous(),
         }
 
     def extract(self, img: torch.Tensor, **conf) -> dict:
