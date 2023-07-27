@@ -10,11 +10,12 @@ import torch
 
 from lightglue import LightGlue, SuperPoint
 from lightglue.utils import load_image
+import torch._dynamo
 
 torch.set_grad_enabled(False)
 
 
-def measure(matcher, data, device, r=100):
+def measure(matcher, data, device='cuda', r=100):
     timings = np.zeros((r, 1))
     if device.type == 'cuda':
         starter = torch.cuda.Event(enable_timing=True)
@@ -45,11 +46,11 @@ def measure(matcher, data, device, r=100):
 
 def print_as_table(d, title, cnames):
     print()
-    header = f'{title:12} '+' '.join([f'{x:>7}' for x in cnames])
+    header = f'{title:24} '+' '.join([f'{x:>7}' for x in cnames])
     print(header)
     print('-'*len(header))
     for k, l in d.items():
-        print(f'{k:12}', ' '.join([f'{x:>7.1f}' for x in l]))
+        print(f'{k:24}', ' '.join([f'{x:>7.1f}' for x in l]))
 
 
 if __name__ == '__main__':
@@ -90,13 +91,17 @@ if __name__ == '__main__':
             'depth_confidence': -1,
             'width_confidence': -1,
         },
-        'LG-prune': {
+        'LG-full-compile': {
             'depth_confidence': -1,
-        },
-        'LG-depth': {
             'width_confidence': -1,
         },
-        'LG-adaptive': {}
+        # 'LG-prune': {
+        #     'depth_confidence': -1,
+        # },
+        'LG-depth-compile': {
+            'width_confidence': -1,
+        },
+        # 'LG-adaptive': {}
     }
 
     sg_configs = {
@@ -131,12 +136,16 @@ if __name__ == '__main__':
     for name, conf in configs.items():
         print('Run benchmark for:', name)
         torch.cuda.empty_cache()
+        torch._dynamo.reset()
         matcher = LightGlue(
             features='superpoint', flash=not args.no_flash, **conf)
         if args.no_prune_thresholds:
             matcher.pruning_keypoint_thresholds = {
                 k: -1 for k in matcher.pruning_keypoint_thresholds}
         matcher = matcher.eval().to(device)
+        if name.endswith('compile'):
+            torch.set_float32_matmul_precision('high')
+            matcher.compile()
         for (pair_name, ax) in zip(inputs.keys(), axes):
             image0, image1 = [x.to(device) for x in inputs[pair_name]]
             runtimes = []
@@ -146,11 +155,12 @@ if __name__ == '__main__':
                 feats1 = extractor.extract(image1)
                 runtime = measure(matcher,
                                   {'image0': feats0, 'image1': feats1},
-                                  device, r=args.repeat)['mean']
+                                  device=device, r=args.repeat)['mean']
                 results[pair_name][name].append(
                     1000/runtime if args.measure == 'throughput' else runtime)
             ax.plot(args.num_keypoints, results[pair_name][name], label=name,
                     marker='o')
+        del matcher
 
     if args.add_superglue:
         from hloc.matchers.superglue import SuperGlue
@@ -176,7 +186,7 @@ if __name__ == '__main__':
                     data['scores1'] = data['keypoint_scores1']
                     data['descriptors0'] = data['descriptors0'].transpose(-1, -2)
                     data['descriptors1'] = data['descriptors1'].transpose(-1, -2)
-                    runtime = measure(matcher, data, device, r=args.repeat)['mean']
+                    runtime = measure(matcher, data, device=device, r=args.repeat)['mean']
                     results[pair_name][name].append(
                         1000/runtime if args.measure == 'throughput' else runtime)
                 ax.plot(args.num_keypoints, results[pair_name][name], label=name,
