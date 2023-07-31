@@ -38,7 +38,6 @@ def measure(matcher, data, device='cuda', r=100):
                 _ = matcher(data)
                 curr_time = (time.perf_counter() - start) * 1e3
             timings[rep] = curr_time
-
     mean_syn = np.sum(timings) / r
     std_syn = np.std(timings)
     return {'mean': mean_syn, 'std': std_syn}
@@ -46,17 +45,19 @@ def measure(matcher, data, device='cuda', r=100):
 
 def print_as_table(d, title, cnames):
     print()
-    header = f'{title:24} '+' '.join([f'{x:>7}' for x in cnames])
+    header = f'{title:30} '+' '.join([f'{x:>7}' for x in cnames])
     print(header)
     print('-'*len(header))
     for k, l in d.items():
-        print(f'{k:24}', ' '.join([f'{x:>7.1f}' for x in l]))
+        print(f'{k:30}', ' '.join([f'{x:>7.1f}' for x in l]))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Benchmark script for LightGlue')
     parser.add_argument('--device', choices=['auto', 'cuda', 'cpu', 'mps'],
                         default='auto', help='device to benchmark on')
+    parser.add_argument('--compile', action='store_true',
+                        help='Compile LightGlue runs')
     parser.add_argument('--no_flash', action='store_true',
                         help='disable FlashAttention')
     parser.add_argument('--no_prune_thresholds', action='store_true',
@@ -68,8 +69,12 @@ if __name__ == '__main__':
     parser.add_argument('--repeat', '--r', type=int, default=100,
                         help='repetitions of measurements')
     parser.add_argument('--num_keypoints', nargs="+", type=int,
-                        default=[512, 1024, 2048, 4096],
+                        default=[256, 512, 1024, 2048, 4096],
                         help='number of keypoints (list separated by spaces)')
+    parser.add_argument('--matmul_precision', default='highest',
+                        choices=['highest', 'high', 'medium'])
+    parser.add_argument('--save', default=None, type=str,
+                        help='path where figure should be saved')
     args = parser.parse_intermixed_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -83,31 +88,32 @@ if __name__ == '__main__':
         'easy': (load_image(images / 'DSC_0411.JPG'),
                  load_image(images / 'DSC_0410.JPG')),
         'difficult': (load_image(images / 'sacre_coeur1.jpg'),
-                      load_image(images / 'sacre_coeur2.jpg'))
+                      load_image(images / 'sacre_coeur2.jpg')),
     }
 
     configs = {
-        'LG-full': {
-            'depth_confidence': -1,
-            'width_confidence': -1,
-        },
-        'LG-full-compile': {
+        'LightGlue-full': {
             'depth_confidence': -1,
             'width_confidence': -1,
         },
         # 'LG-prune': {
-        #     'depth_confidence': -1,
-        # },
-        # 'LG-depth-compile': {
         #     'width_confidence': -1,
         # },
-        # 'LG-adaptive': {}
+        # 'LG-depth': {
+        #     'depth_confidence': -1,
+        # },
+        'LightGlue-adaptive': {}
     }
 
+    if args.compile:
+        configs = {**configs, **{k+'-compile': v for k, v in configs.items()}}
+
     sg_configs = {
-        'SG': {},
-        'SG-fast': {'sinkhorn_iterations': 5}
+        # 'SuperGlue': {},
+        'SuperGlue-fast': {'sinkhorn_iterations': 5}
     }
+
+    torch.set_float32_matmul_precision(args.matmul_precision)
 
     results = {k: defaultdict(list) for k, v in inputs.items()}
 
@@ -115,6 +121,7 @@ if __name__ == '__main__':
     extractor = extractor.eval().to(device)
     figsize = (len(inputs)*4.5, 4.5)
     fig, axes = plt.subplots(1, len(inputs), sharey=True, figsize=figsize)
+    axes = axes if len(inputs) > 1 else [axes]
     fig.canvas.manager.set_window_title(f'LightGlue benchmark ({device.type})')
 
     for title, ax in zip(inputs.keys(), axes):
@@ -161,13 +168,12 @@ if __name__ == '__main__':
                     1000/runtime if args.measure == 'throughput' else runtime)
             ax.plot(args.num_keypoints, results[pair_name][name], label=name,
                     marker='o')
-        del matcher
+        del matcher, feats0, feats1
 
     if args.add_superglue:
         from hloc.matchers.superglue import SuperGlue
         for name, conf in sg_configs.items():
             print('Run benchmark for:', name)
-            torch.cuda.empty_cache()
             matcher = SuperGlue(conf)
             matcher = matcher.eval().to(device)
             for (pair_name, ax) in zip(inputs.keys(), axes):
@@ -185,17 +191,20 @@ if __name__ == '__main__':
                     }
                     data['scores0'] = data['keypoint_scores0']
                     data['scores1'] = data['keypoint_scores1']
-                    data['descriptors0'] = data['descriptors0'].transpose(-1, -2)
-                    data['descriptors1'] = data['descriptors1'].transpose(-1, -2)
+                    data['descriptors0'] = data['descriptors0'].transpose(-1, -2).contiguous()
+                    data['descriptors1'] = data['descriptors1'].transpose(-1, -2).contiguous()
                     runtime = measure(matcher, data, device=device, r=args.repeat)['mean']
                     results[pair_name][name].append(
                         1000/runtime if args.measure == 'throughput' else runtime)
                 ax.plot(args.num_keypoints, results[pair_name][name], label=name,
                         marker='o')
+            del matcher, data, image0, image1, feats0, feats1
 
     for name, runtimes in results.items():
         print_as_table(runtimes, name, args.num_keypoints)
 
     axes[0].legend()
     fig.tight_layout()
+    if args.save:
+        plt.savefig(args.save, dpi=fig.dpi)
     plt.show()
