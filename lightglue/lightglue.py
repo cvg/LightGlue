@@ -314,7 +314,7 @@ class LightGlue(nn.Module):
     # Therefore, we only activate it if there are enough keypoints.
     pruning_keypoint_thresholds = {
         'cpu': -1,
-        'mps': 1024,
+        'mps': -1,
         'cuda': 1024,
         'flash': 1536,
     }
