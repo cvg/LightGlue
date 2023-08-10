@@ -8,3 +8,11 @@ __pycache__
 lightglue/_flash/
 *-checkpoint.ipynb
 *.pth
+
+# weights
+weights/
+*.pth
+*.onnx
+
+# data
+data/
