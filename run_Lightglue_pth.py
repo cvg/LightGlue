@@ -18,9 +18,23 @@ class LightGlueFeatureMatcher():
     """
         Use SuperPoint features combined with LightGlue.
     """
-    def __init__(self , withline=False , device="cpu") -> None:
-        self.extractor = SuperPoint(max_num_keypoints=2048).eval().to(device)
-        self.matcher = LightGlue(features='superpoint').eval().to(device)
+    def __init__(self , extractor_type="SuperPoint" , withline=False , device="cpu") -> None:
+        assert extractor_type.lower() in ["superpoint" , "disk"] , \
+            f"Extractor type {extractor_type} is not supported"
+            
+        self.extractor_type = extractor_type.lower()
+        if self.extractor_type == "superpoint":  
+            self.extractor = SuperPoint(max_num_keypoints=2048).eval().to(device)
+            self.matcher = LightGlue(features='superpoint').eval().to(device)
+            
+        elif self.extractor_type == "disk":
+            """
+                DISK performs exceptionally well on phototourism data (on which it was trained and evaluated), 
+            but less good on other data. 
+            """
+            self.extractor = DISK(max_num_keypoints=2048).eval().to(device)
+            self.matcher = LightGlue(features='disk').eval().to(device)
+            
         self.withline = withline
         self.device = device
     
@@ -150,6 +164,7 @@ def main():
     parser.add_argument('--inputdir0', type=str , help='xxxx')
     parser.add_argument('--inputdir1', type=str , help='xxxx')
     parser.add_argument('--savedir', type=str , help='xxxx')
+    parser.add_argument('--extractor-type', type=str , default="SuperPoint" , help='xxxx')
     parser.add_argument('--withline', action="store_true" , default=False , help='xxxx')
 
     args = parser.parse_args()
@@ -157,6 +172,7 @@ def main():
     input_dir0 = args.inputdir0 if args.inputdir0 is not None else r"data/dir0"
     input_dir1 = args.inputdir1 if args.inputdir1 is not None else r"data/dir1"
     save_dir = args.savedir if args.savedir is not None else r"data/output"
+    extractor_type = args.extractor_type
     withline = args.withline
     device_ = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"torch.cuda.is_available() : {torch.cuda.is_available()} , chose device {device_}")
@@ -166,7 +182,7 @@ def main():
     image_dir0 = Path(input_dir0)
     image_dir1 = Path(input_dir1)
     
-    lg_feature_matcher = LightGlueFeatureMatcher(withline , device_)
+    lg_feature_matcher = LightGlueFeatureMatcher(extractor_type , withline , device_)
     
     for path0 , path1 in zip(os.listdir(image_dir0) , os.listdir(image_dir1)):
         try:
@@ -184,6 +200,7 @@ def main():
             end_time = time.time()
             
             save_name = osp.basename(path0).split(".")[0] + "_"+ osp.basename(path1).split(".")[0]
+            save_name = save_name + "_" + extractor_type
             if withline:
                 save_name += "_withline.png"
             else:
