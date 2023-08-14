@@ -160,7 +160,7 @@ def read_image(path: Path, grayscale: bool = False) -> np.ndarray:
 
 def main():
     torch.set_grad_enabled(False)
-    parser = argparse.ArgumentParser(description='Run LightGlue demo.')
+    parser = argparse.ArgumentParser(description='Run LightGlue torch demo.')
     parser.add_argument('--inputdir0', type=str , help='xxxx')
     parser.add_argument('--inputdir1', type=str , help='xxxx')
     parser.add_argument('--savedir', type=str , help='xxxx')

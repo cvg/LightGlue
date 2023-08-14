@@ -1,4 +1,4 @@
-# Super
+# SuperPoint
 python run_Lightglue_pth.py
 ## Withline
 python run_Lightglue_pth.py --withline
