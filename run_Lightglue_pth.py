@@ -197,6 +197,9 @@ def main():
             
             start_time = time.time()
             kpc0, kpc1 , _ = lg_feature_matcher._inference_img(image0 , image1)
+            print(f"kpc0 output shape : {kpc0.shape}")
+            print(f"kpc1 output shape : {kpc1.shape}")
+            
             end_time = time.time()
             
             save_name = osp.basename(path0).split(".")[0] + "_"+ osp.basename(path1).split(".")[0]

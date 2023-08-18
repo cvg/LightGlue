@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import torch
 import argparse
 from typing import List
-
-import torch
 
 from lightglue_onnx import DISK, LightGlue, LightGlueEnd2End, SuperPoint
 from lightglue_onnx.end2end import normalize_keypoints
@@ -14,65 +13,46 @@ from lightglue_onnx.utils import load_image, rgb_to_grayscale
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--img_size",
-        nargs="+",
-        type=int,
-        default=512,
-        required=False,
+        "--img_size" , nargs="+" , type=int,
+        default=512 , required=False,
         help="Sample image size for ONNX tracing. If a single integer is given, resize the longer side of the image to this value. Otherwise, please provide two integers (height width).",
     )
     parser.add_argument(
-        "--extractor_type",
-        type=str,
-        default="superpoint",
-        choices=["superpoint", "disk"],
-        required=False,
+        "--extractor_type" , type=str , default="superpoint",
+        choices=["superpoint", "disk"] , required=False,
         help="Type of feature extractor. Supported extractors are 'superpoint' and 'disk'. Defaults to 'superpoint'.",
     )
     parser.add_argument(
-        "--extractor_path",
-        type=str,
-        default=None,
-        required=False,
+        "--extractor_path" , type=str , default=None , required=False,
         help="Path to save the feature extractor ONNX model.",
     )
     parser.add_argument(
-        "--lightglue_path",
-        type=str,
-        default=None,
-        required=False,
+        "--lightglue_path" , type=str , default=None , required=False,
         help="Path to save the LightGlue ONNX model.",
     )
     parser.add_argument(
-        "--end2end",
-        action="store_true",
+        "--end2end" , action="store_true",
         help="Whether to export an end-to-end pipeline instead of individual models.",
     )
     parser.add_argument(
-        "--safe",
-        action="store_true",
+        "--safe" , action="store_true",
         help="Use the safe mode to prevent LightGlue from crashing on the rare occasion that the feature extractor outputs zero keypoints. Only applies when exporting with the end2end option.",
     )
     parser.add_argument(
         "--dynamic", action="store_true", help="Whether to allow dynamic image sizes."
     )
     parser.add_argument(
-        "--mp",
-        action="store_true",
+        "--mp" , action="store_true",
         help="Whether to use mixed precision (CUDA only). Not supported when using the --safe option.",
     )
     parser.add_argument(
-        "--flash",
-        action="store_true",
+        "--flash" , action="store_true",
         help="Whether to use Flash Attention (CUDA only). Flash Attention must be installed. Not supported when using the --safe option.",
     )
 
     # Extractor-specific args:
     parser.add_argument(
-        "--max_num_keypoints",
-        type=int,
-        default=None,
-        required=False,
+        "--max_num_keypoints" , type=int , default=None , required=False,
         help="Maximum number of keypoints outputted by the extractor.",
     )
 
