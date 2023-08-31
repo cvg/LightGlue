@@ -51,9 +51,9 @@ class DISK(nn.Module):
         descriptors = torch.stack(descriptors, 0)
 
         return {
-            'keypoints': keypoints.to(image),
-            'keypoint_scores': scores.to(image),
-            'descriptors': descriptors.to(image),
+            'keypoints': keypoints.to(image).contiguous(),
+            'keypoint_scores': scores.to(image).contiguous(),
+            'descriptors': descriptors.to(image).contiguous(),
         }
 
     def extract(self, img: torch.Tensor, **conf) -> dict:

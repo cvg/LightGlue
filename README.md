@@ -88,6 +88,18 @@ feats0, feats1, matches01 = match_pair(extractor, matcher, image0, image1)
 
 ## Advanced configuration
 
+<details>
+<summary>[Detail of all parameters - click to expand]</summary>
+
+- ```n_layers```: Number of stacked self+cross attention layers. Reduce this value for faster inference at the cost of accuracy (continuous red line in the plot above). Default: 9 (all layers).
+- ```flash```: Enable FlashAttention. Significantly increases the speed and reduces the memory consumption without any impact on accuracy. Default: True (LightGlue automatically detects if FlashAttention is available).
+- ```mp```: Enable mixed precision inference. Default: False (off)
+- ```depth_confidence```: Controls the early stopping. A lower values stops more often at earlier layers. Default: 0.95, disable with -1.
+- ```width_confidence```: Controls the iterative point pruning. A lower value prunes more points earlier. Default: 0.99, disable with -1.
+- ```filter_threshold```: Match confidence. Increase this value to obtain less, but stronger matches. Default: 0.1
+
+</details>
+
 The default values give a good trade-off between speed and accuracy. To maximize the accuracy, use all keypoints and disable the adaptive mechanisms:
 ```python
 extractor = SuperPoint(max_num_keypoints=None)
@@ -99,17 +111,43 @@ To increase the speed with a small drop of accuracy, decrease the number of keyp
 extractor = SuperPoint(max_num_keypoints=1024)
 matcher = LightGlue(features='superpoint', depth_confidence=0.9, width_confidence=0.95)
 ```
-The maximum speed is obtained with [FlashAttention](https://arxiv.org/abs/2205.14135), which is automatically used when ```torch >= 2.0``` or if it is [installed from source](https://github.com/HazyResearch/flash-attention#installation-and-features).
+
+The maximum speed is obtained with a combination of:
+- [FlashAttention](https://arxiv.org/abs/2205.14135): automatically used when ```torch >= 2.0``` or if [installed from source](https://github.com/HazyResearch/flash-attention#installation-and-features).
+- PyTorch compilation, available when ```torch >= 2.0```:
+```python
+matcher = matcher.eval().cuda()
+matcher.compile(mode='reduce-overhead')
+```
+For inputs with fewer than 1536 keypoints (determined experimentally), this compiles LightGlue but disables point pruning (large overhead). For larger input sizes, it automatically falls backs to eager mode with point pruning. Adaptive depths is supported for any input size.
+
+## Benchmark
+
+
+<p align="center">
+  <a><img src="assets/benchmark.png" alt="Logo" width=80%></a>
+  <br>
+  <em>Benchmark results on GPU (RTX 3080). With compilation and adaptivity, LightGlue runs at 150 FPS @ 1024 keypoints and 50 FPS @ 4096 keypoints per image. This is a 4-10x speedup over SuperGlue. </em>
+</p>
+
+<p align="center">
+  <a><img src="assets/benchmark_cpu.png" alt="Logo" width=80%></a>
+  <br>
+  <em>Benchmark results on CPU (Intel i7 10700K). LightGlue runs at 20 FPS @ 512 keypoints. </em>
+</p>
+
+Obtain the same plots for your setup using our [benchmark script](benchmark.py):
+```
+python benchmark.py [--device cuda] [--add_superglue] [--num_keypoints 512 1024 2048 4096] [--compile]
+```
 
 <details>
-<summary>[Detail of all parameters - click to expand]</summary>
+<summary>[Performance tip - click to expand]</summary>
 
-- [```n_layers```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L261): Number of stacked self+cross attention layers. Reduce this value for faster inference at the cost of accuracy (continuous red line in the plot above). Default: 9 (all layers).
-- [```flash```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L263): Enable FlashAttention. Significantly increases the speed and reduces the memory consumption without any impact on accuracy. Default: True (LightGlue automatically detects if FlashAttention is available).
-- [```mp```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L264): Enable mixed precision inference. Default: False (off)
-- [```depth_confidence```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L265): Controls the early stopping. A lower values stops more often at earlier layers. Default: 0.95, disable with -1.
-- [```width_confidence```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L266): Controls the iterative point pruning. A lower value prunes more points earlier. Default: 0.99, disable with -1.
-- [```filter_threshold```](https://github.com/cvg/LightGlue/blob/main/lightglue/lightglue.py#L267): Match confidence. Increase this value to obtain less, but stronger matches. Default: 0.1
+Note: **Point pruning** introduces an overhead that sometimes outweighs its benefits.
+Point pruning is thus enabled only when the there are more than N keypoints in an image, where N is hardware-dependent.
+We provide defaults optimized for current hardware (RTX 30xx GPUs).
+We suggest running the benchmark script and adjusting the thresholds for your hardware by updating `LightGlue.pruning_keypoint_thresholds['cuda']`.
 
 </details>
 
