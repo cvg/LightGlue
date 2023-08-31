@@ -35,6 +35,17 @@ def normalize_keypoints(
     return kpts
 
 
+def pad_to_length(x: torch.Tensor, length: int) -> Tuple[torch.Tensor]:
+    if length <= x.shape[-2]:
+        return x, torch.ones_like(x[..., :1], dtype=torch.bool)
+    pad = torch.ones(*x.shape[:-2], length-x.shape[-2], x.shape[-1],
+                     device=x.device, dtype=x.dtype)
+    y = torch.cat([x, pad], dim=-2)
+    mask = torch.zeros(*y.shape[:-1], 1, dtype=torch.bool, device=x.device)
+    mask[..., :x.shape[-2], :] = True
+    return y, mask
+
+
 def rotate_half(x: torch.Tensor) -> torch.Tensor:
     x = x.unflatten(-1, (-1, 2))
     x1, x2 = x.unbind(dim=-1)
@@ -449,10 +460,10 @@ class LightGlue(nn.Module):
         do_compile = self.static_lengths and c <= max(self.static_lengths)
         if do_compile:
             kn = min([k for k in self.static_lengths if k >= c])
-            desc0, mask0 = self.pad_to_length(desc0, kn)
-            desc1, mask1 = self.pad_to_length(desc1, kn)
-            kpts0, _ = self.pad_to_length(kpts0, kn)
-            kpts1, _ = self.pad_to_length(kpts1, kn)
+            desc0, mask0 = pad_to_length(desc0, kn)
+            desc1, mask1 = pad_to_length(desc1, kn)
+            kpts0, _ = pad_to_length(kpts0, kn)
+            kpts1, _ = pad_to_length(kpts1, kn)
         desc0 = self.input_proj(desc0)
         desc1 = self.input_proj(desc1)
         # cache positional embeddings
@@ -572,13 +583,3 @@ class LightGlue(nn.Module):
             return self.pruning_keypoint_thresholds['flash']
         else:
             return self.pruning_keypoint_thresholds[device.type]
-
-    def pad_to_length(self, x: torch.Tensor, length: int) -> Tuple[torch.Tensor]:
-        if length <= x.shape[-2]:
-            return x, torch.ones_like(x[..., :1], dtype=torch.bool)
-        pad = torch.ones(*x.shape[:-2], length-x.shape[-2], x.shape[-1],
-                         device=x.device, dtype=x.dtype)
-        y = torch.cat([x, pad], dim=-2)
-        mask = torch.zeros(*y.shape[:-1], 1, dtype=torch.bool, device=x.device)
-        mask[..., :x.shape[-2], :] = True
-        return y, mask

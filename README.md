@@ -88,28 +88,6 @@ feats0, feats1, matches01 = match_pair(extractor, matcher, image0, image1)
 
 ## Advanced configuration
 
-The default values give a good trade-off between speed and accuracy. To maximize the accuracy, use all keypoints and disable the adaptive mechanisms:
-```python
-extractor = SuperPoint(max_num_keypoints=None)
-matcher = LightGlue(features='superpoint', depth_confidence=-1, width_confidence=-1)
-```
-
-To increase the speed with a small drop of accuracy, decrease the number of keypoints and lower the adaptive thresholds:
-```python
-extractor = SuperPoint(max_num_keypoints=1024)
-matcher = LightGlue(features='superpoint', depth_confidence=0.9, width_confidence=0.95)
-```
-The maximum speed is obtained with [FlashAttention](https://arxiv.org/abs/2205.14135), which is automatically used when ```torch >= 2.0``` or if it is [installed from source](https://github.com/HazyResearch/flash-attention#installation-and-features).
-
-To optimize inference with few keypoints, you can compile LightGlue:
-
-```python
-matcher = matcher.eval().cuda()
-matcher.compile(mode='reduce-overhead')
-```
-
-This compiles LightGlue for a set of static input lengths (256, 512, 768, 1024, 1280, 1536 keypoints), with automatic padding for dynamic shapes. Above 1536 keypoints, the default python implementation is used. Note that this supports adaptive depth, but disables point pruning <1536 keypoints.
-
 <details>
 <summary>[Detail of all parameters - click to expand]</summary>
 
@@ -122,28 +100,54 @@ This compiles LightGlue for a set of static input lengths (256, 512, 768, 1024, 
 
 </details>
 
-
-We provide a [benchmark script](https://github.com/cvg/LightGlue/blob/main/benchmark.py) which evaluates the inference time on test images. 
-
+The default values give a good trade-off between speed and accuracy. To maximize the accuracy, use all keypoints and disable the adaptive mechanisms:
+```python
+extractor = SuperPoint(max_num_keypoints=None)
+matcher = LightGlue(features='superpoint', depth_confidence=-1, width_confidence=-1)
 ```
-python benchmark.py [--device cuda] [--add_superglue] [--num_keypoints 512 1024 2048 4096] [--compile]
+
+To increase the speed with a small drop of accuracy, decrease the number of keypoints and lower the adaptive thresholds:
+```python
+extractor = SuperPoint(max_num_keypoints=1024)
+matcher = LightGlue(features='superpoint', depth_confidence=0.9, width_confidence=0.95)
 ```
-<details>
-<summary>[Benchmark results - click to expand]</summary>
+
+The maximum speed is obtained with a combination of:
+- [FlashAttention](https://arxiv.org/abs/2205.14135): automatically used when ```torch >= 2.0``` or if [installed from source](https://github.com/HazyResearch/flash-attention#installation-and-features).
+- PyTorch compilation, available when ```torch >= 2.0```:
+```python
+matcher = matcher.eval().cuda()
+matcher.compile(mode='reduce-overhead')
+```
+For inputs with fewer than 1536 keypoints (determined experimentally), this compiles LightGlue but disables point pruning (large overhead). For larger input sizes, it automatically falls backs to eager mode with point pruning. Adaptive depths is supported for any input size.
+
+## Benchmark
+
 
 <p align="center">
   <a><img src="assets/benchmark.png" alt="Logo" width=80%></a>
   <br>
-  <em>Benchmark results on RTX 3080. With compilation and adaptivity, LightGlue achieves 150/50 FPS with 1024/4096 keypoints per image, respectively. This equals 4-10x speedup over SuperGlue and almost linear scaling. </em>
+  <em>Benchmark results on GPU (RTX 3080). With compilation and adaptivity, LightGlue runs at 150 FPS @ 1024 keypoints and 50 FPS @ 4096 keypoints per image. This is a 4-10x speedup over SuperGlue. </em>
 </p>
 
 <p align="center">
   <a><img src="assets/benchmark_cpu.png" alt="Logo" width=80%></a>
   <br>
-  <em>Benchmark results on Intel i7 10700K. On a standard CPU, LightGlue matches image pairs at 20 FPS with 512 keypoints.</em>
+  <em>Benchmark results on CPU (Intel i7 10700K). LightGlue runs at 20 FPS @ 512 keypoints. </em>
 </p>
 
-Note: **Point pruning** requires gathering descriptors during the forward pass, and this overhead eliminates the benefits of point pruning in some cases (= few keypoints). Consequently, point pruning is only used when there are more than N keypoints in an image, where N depends on device / hardware used. The defaults we provide are for current hardware (RTX 30xx), and we suggest running the benchmark script once and to adjust the thresholds for your hardware accordingly.
+Obtain the same plots for your setup using our [benchmark script](benchmark.py):
+```
+python benchmark.py [--device cuda] [--add_superglue] [--num_keypoints 512 1024 2048 4096] [--compile]
+```
+
+<details>
+<summary>[Performance tip - click to expand]</summary>
+
+Note: **Point pruning** introduces an overhead that sometimes outweighs its benefits.
+Point pruning is thus enabled only when the there are more than N keypoints in an image, where N is hardware-dependent.
+We provide defaults optimized for current hardware (RTX 30xx GPUs).
+We suggest running the benchmark script and adjusting the thresholds for your hardware by updating `LightGlue.pruning_keypoint_thresholds['cuda']`.
 
 </details>
 
