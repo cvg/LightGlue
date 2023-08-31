@@ -128,11 +128,15 @@ if __name__ == '__main__':
         ax.set_xscale('log', base=2)
         bases = [2**x for x in range(7, 16)]
         ax.set_xticks(bases, bases)
+        ax.grid(which='major')
         if args.measure == 'log-time':
             ax.set_yscale('log')
             yticks = [10**x for x in range(6)]
             ax.set_yticks(yticks, yticks)
-        ax.grid()
+            mpos = [10**x * i for x in range(6) for i in range(2, 10)]
+            mlabel = [10**x * i if i in [2, 5] else None for x in range(6) for i in range(2, 10)]
+            ax.set_yticks(mpos, mlabel, minor=True)
+            ax.grid(which='minor', linewidth=0.2)
         ax.set_title(title)
 
         ax.set_xlabel("# keypoints")
