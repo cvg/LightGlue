@@ -289,6 +289,7 @@ class MatchAssignment(nn.Module):
 
 def filter_matches(scores: torch.Tensor, th: float):
     """ obtain matches from a log assignment matrix [Bx M+1 x N+1]"""
+    assert scores.shape.__len__() == 3
     max0, max1 = scores[:, :-1, :-1].max(2), scores[:, :-1, :-1].max(1)
     m0, m1 = max0.indices, max1.indices
     indices0 = torch.arange(m0.shape[1], device=m0.device)[None]
