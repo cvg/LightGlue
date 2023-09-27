@@ -1,0 +1,16 @@
+name: Black Formatting Check
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [ assigned, opened, synchronize, reopened ]
+jobs:
+  formatting-check:
+    name: Formatting Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: psf/black@stable
+        with:
+          jupyter: true
