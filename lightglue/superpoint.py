@@ -143,7 +143,7 @@ class SuperPoint(nn.Module):
             c5, self.conf["descriptor_dim"], kernel_size=1, stride=1, padding=0
         )
 
-        url = "https://github.com/cvg/LightGlue/releases/download/v0.1_arxiv/superpoint_v1.pth"
+        url = "https://github.com/cvg/LightGlue/releases/download/v0.1_arxiv/superpoint_v1.pth"  # noqa
         self.load_state_dict(torch.hub.load_state_dict_from_url(url))
 
         mk = self.conf["max_num_keypoints"]
