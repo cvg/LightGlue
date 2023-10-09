@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center"><ins>LightGlue ⚡️</ins><br>Local Feature Matching at Light Speed</h1>
+  <h1 align="center"><ins>LightGlue</ins> ⚡️<br>Local Feature Matching at Light Speed</h1>
   <p align="center">
     <a href="https://www.linkedin.com/in/philipplindenberger/">Philipp Lindenberger</a>
     ·
@@ -13,7 +13,9 @@
   <!-- <h2 align="center">PrePrint 2023</h2> -->
   <h2 align="center"><p>
     <a href="https://arxiv.org/pdf/2306.13643.pdf" align="center">Paper</a> | 
-    <a href="https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb" align="center">Colab</a>
+    <a href="https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb" align="center">Colab</a> | 
+    <a href="https://psarlin.com/assets/LightGlue_ICCV2023_poster_compressed.pdf" align="center">Poster</a> | 
+    <a href="https://github.com/cvg/glue-factory" align="center">Train your own!</a>
   </p></h2>
   <div align="center"></div>
 </p>
@@ -150,6 +152,10 @@ We provide defaults optimized for current hardware (RTX 30xx GPUs).
 We suggest running the benchmark script and adjusting the thresholds for your hardware by updating `LightGlue.pruning_keypoint_thresholds['cuda']`.
 
 </details>
+
+## Training
+
+With [Glue Factory](https://github.com/cvg/glue-factory), you can train LightGlue with your own local features, on your own dataset!
 
 ## Other links
 - [hloc - the visual localization toolbox](https://github.com/cvg/Hierarchical-Localization/): run LightGlue for Structure-from-Motion and visual localization.
