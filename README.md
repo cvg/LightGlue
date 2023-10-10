@@ -153,9 +153,10 @@ We suggest running the benchmark script and adjusting the thresholds for your ha
 
 </details>
 
-## Training
+## Training and evaluation
 
 With [Glue Factory](https://github.com/cvg/glue-factory), you can train LightGlue with your own local features, on your own dataset!
+You can also evaluate it and other baselines on standard benchmarks like HPatches and MegaDepth.
 
 ## Other links
 - [hloc - the visual localization toolbox](https://github.com/cvg/Hierarchical-Localization/): run LightGlue for Structure-from-Motion and visual localization.
@@ -163,7 +164,7 @@ With [Glue Factory](https://github.com/cvg/glue-factory), you can train LightGlu
 - [Image Matching WebUI](https://github.com/Vincentqyw/image-matching-webui): a web GUI to easily compare different matchers, including LightGlue.
 - [kornia](https://kornia.readthedocs.io) now exposes LightGlue via the interfaces [`LightGlue`](https://kornia.readthedocs.io/en/latest/feature.html#kornia.feature.LightGlue) and [`LightGlueMatcher`](https://kornia.readthedocs.io/en/latest/feature.html#kornia.feature.LightGlueMatcher).
 
-## BibTeX Citation
+## BibTeX citation
 If you use any ideas from the paper or code from this repo, please consider citing:
 
 ```txt
