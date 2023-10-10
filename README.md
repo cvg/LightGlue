@@ -7,17 +7,14 @@
     ·
     <a href="https://www.microsoft.com/en-us/research/people/mapoll/">Marc&nbsp;Pollefeys</a>
   </p>
-<!-- <p align="center">
-    <img src="assets/larchitecture.svg" alt="Logo" height="40">
-</p> -->
-  <!-- <h2 align="center">PrePrint 2023</h2> -->
-  <h2 align="center"><p>
+  <h2 align="center">
+    <p>ICCV 2023</p>
     <a href="https://arxiv.org/pdf/2306.13643.pdf" align="center">Paper</a> | 
     <a href="https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb" align="center">Colab</a> | 
     <a href="https://psarlin.com/assets/LightGlue_ICCV2023_poster_compressed.pdf" align="center">Poster</a> | 
     <a href="https://github.com/cvg/glue-factory" align="center">Train your own!</a>
-  </p></h2>
-  <div align="center"></div>
+  </h2>
+  
 </p>
 <p align="center">
     <a href="https://arxiv.org/abs/2306.13643"><img src="assets/easy_hard.jpg" alt="example" width=80%></a>
