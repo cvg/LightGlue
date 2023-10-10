@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center"><ins>LightGlue ⚡️</ins><br>Local Feature Matching at Light Speed</h1>
+  <h1 align="center"><ins>LightGlue</ins> ⚡️<br>Local Feature Matching at Light Speed</h1>
   <p align="center">
     <a href="https://www.linkedin.com/in/philipplindenberger/">Philipp Lindenberger</a>
     ·
@@ -7,15 +7,14 @@
     ·
     <a href="https://www.microsoft.com/en-us/research/people/mapoll/">Marc&nbsp;Pollefeys</a>
   </p>
-<!-- <p align="center">
-    <img src="assets/larchitecture.svg" alt="Logo" height="40">
-</p> -->
-  <!-- <h2 align="center">PrePrint 2023</h2> -->
-  <h2 align="center"><p>
+  <h2 align="center">
+    <p>ICCV 2023</p>
     <a href="https://arxiv.org/pdf/2306.13643.pdf" align="center">Paper</a> | 
-    <a href="https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb" align="center">Colab</a>
-  </p></h2>
-  <div align="center"></div>
+    <a href="https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb" align="center">Colab</a> | 
+    <a href="https://psarlin.com/assets/LightGlue_ICCV2023_poster_compressed.pdf" align="center">Poster</a> | 
+    <a href="https://github.com/cvg/glue-factory" align="center">Train your own!</a>
+  </h2>
+  
 </p>
 <p align="center">
     <a href="https://arxiv.org/abs/2306.13643"><img src="assets/easy_hard.jpg" alt="example" width=80%></a>
@@ -151,13 +150,18 @@ We suggest running the benchmark script and adjusting the thresholds for your ha
 
 </details>
 
+## Training and evaluation
+
+With [Glue Factory](https://github.com/cvg/glue-factory), you can train LightGlue with your own local features, on your own dataset!
+You can also evaluate it and other baselines on standard benchmarks like HPatches and MegaDepth.
+
 ## Other links
 - [hloc - the visual localization toolbox](https://github.com/cvg/Hierarchical-Localization/): run LightGlue for Structure-from-Motion and visual localization.
 - [LightGlue-ONNX](https://github.com/fabio-sim/LightGlue-ONNX): export LightGlue to the Open Neural Network Exchange (ONNX) format with support for TensorRT and OpenVINO.
 - [Image Matching WebUI](https://github.com/Vincentqyw/image-matching-webui): a web GUI to easily compare different matchers, including LightGlue.
 - [kornia](https://kornia.readthedocs.io) now exposes LightGlue via the interfaces [`LightGlue`](https://kornia.readthedocs.io/en/latest/feature.html#kornia.feature.LightGlue) and [`LightGlueMatcher`](https://kornia.readthedocs.io/en/latest/feature.html#kornia.feature.LightGlueMatcher).
 
-## BibTeX Citation
+## BibTeX citation
 If you use any ideas from the paper or code from this repo, please consider citing:
 
 ```txt
