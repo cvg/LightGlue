@@ -1,15 +1,16 @@
 # Benchmark script for LightGlue on real images
-from pathlib import Path
 import argparse
-import matplotlib.pyplot as plt
-from collections import defaultdict
 import time
+from collections import defaultdict
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch._dynamo
 
 from lightglue import LightGlue, SuperPoint
 from lightglue.utils import load_image
-import torch._dynamo
 
 torch.set_grad_enabled(False)
 
