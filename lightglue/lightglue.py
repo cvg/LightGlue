@@ -341,6 +341,7 @@ class LightGlue(nn.Module):
     features = {
         "superpoint": ("superpoint_lightglue", 256),
         "disk": ("disk_lightglue", 128),
+        "aliked": ("aliked_lightglue", 128),
     }
 
     def __init__(self, features="superpoint", **conf) -> None:
