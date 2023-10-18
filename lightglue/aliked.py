@@ -32,8 +32,8 @@
 # Xiaoming Zhao, Xingming Wu, Weihai Chen, Peter C.Y. Chen, Qingsong Xu, and Zhengguo Li
 # Code from https://github.com/Shiaoming/ALIKED
 
-from typing import Callable, Optional
 from types import SimpleNamespace
+from typing import Callable, Optional
 
 import torch
 import torch.nn.functional as F

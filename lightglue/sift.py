@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import cv2
 import numpy as np
 import pycolmap
@@ -5,7 +7,6 @@ import torch
 import torch.nn as nn
 from omegaconf import OmegaConf
 from scipy.spatial import KDTree
-from types import SimpleNamespace
 
 from .utils import ImagePreprocessor
 
