@@ -14,9 +14,9 @@ from .utils import Extractor
 
 
 def sift_to_rootsift(x: torch.Tensor, eps=1e-6) -> torch.Tensor:
-    x = torch.nn.functional.normalize(x, p=1, dim=-1)
-    x.sqrt_().clip_(min=eps)
-    return torch.nn.functional.normalize(x, p=2, dim=-1)
+    x = torch.nn.functional.normalize(x, p=1, dim=-1, eps=eps)
+    x.clip_(min=eps).sqrt_()
+    return torch.nn.functional.normalize(x, p=2, dim=-1, eps=eps)
 
 
 def run_opencv_sift(features: cv2.Feature2D, image: np.ndarray) -> np.ndarray:
@@ -72,6 +72,7 @@ class SIFT(Extractor):
                 "edge_threshold": self.conf.edge_threshold,
                 "first_octave": self.conf.first_octave,
                 "num_octaves": self.conf.num_octaves,
+                "normalization": pycolmap.Normalization.L2,  # L1_ROOT is buggy.
             }
             device = (
                 "auto" if backend == "pycolmap" else backend.replace("pycolmap_", "")
@@ -86,10 +87,6 @@ class SIFT(Extractor):
                 )
             else:
                 options["max_num_features"] = self.conf.max_num_keypoints
-            if self.conf.rootsift:
-                options["normalization"] = pycolmap.Normalization.L1_ROOT
-            else:
-                options["normalization"] = pycolmap.Normalization.L2
             self.sift = pycolmap.Sift(options=options, device=device)
         elif backend == "opencv":
             self.sift = cv2.SIFT_create(
@@ -138,7 +135,7 @@ class SIFT(Extractor):
             # Keep the k keypoints with highest score
             num_points = self.conf.max_num_keypoints
             if num_points is not None and len(keypoints) > num_points:
-                indices = torch.topk(scores, len(keypoints)).indices
+                indices = torch.topk(scores, num_points).indices
                 pred = {k: v[indices] for k, v in pred.items()}
 
         return pred
