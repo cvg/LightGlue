@@ -99,9 +99,9 @@ class SIFT(Extractor):
                 nOctaveLayers=self.conf.num_octaves,
             )
         else:
-            values = {"opencv", "pycolmap", "pycolmap_cpu", "pycolmap_cuda"}
+            backends = {"opencv", "pycolmap", "pycolmap_cpu", "pycolmap_cuda"}
             raise ValueError(
-                f"Unknown backend: {backend} not in " f"{{{','.join(values)}}}."
+                f"Unknown backend: {backend} not in " f"{{{','.join(backends)}}}."
             )
 
     def extract_single_image(self, image: torch.Tensor):
