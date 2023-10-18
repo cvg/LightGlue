@@ -361,11 +361,15 @@ class LightGlue(nn.Module):
 
     def __init__(self, features="superpoint", **conf) -> None:
         super().__init__()
-        self.conf = {**self.default_conf, **conf}
+        self.conf = conf = SimpleNamespace(**{**self.default_conf, **conf})
         if features is not None:
-            assert features in list(self.features.keys())
-            self.conf["weights"], self.conf["input_dim"] = self.features[features]
-        self.conf = conf = SimpleNamespace(**self.conf)
+            if features not in self.features:
+                raise ValueError(
+                    f"Unsupported features: {features} not in "
+                    f"{{{','.join(self.features)}}}"
+                )
+            for k, v in self.features[features].items():
+                setattr(conf, k, v)
 
         if conf.input_dim != conf.descriptor_dim:
             self.input_proj = nn.Linear(conf.input_dim, conf.descriptor_dim, bias=True)
@@ -471,8 +475,12 @@ class LightGlue(nn.Module):
         kpts1 = normalize_keypoints(kpts1, size1).clone()
 
         if self.conf.add_scale_ori:
-            kpts0 = torch.cat([kpts0, data0["scales"], data0["oris"]], -1)
-            kpts1 = torch.cat([kpts1, data1["scales"], data1["oris"]], -1)
+            kpts0 = torch.cat(
+                [kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1
+            )
+            kpts1 = torch.cat(
+                [kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1
+            )
         desc0 = data0["descriptors"].detach().contiguous()
         desc1 = data1["descriptors"].detach().contiguous()
 

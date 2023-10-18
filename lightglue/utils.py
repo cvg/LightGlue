@@ -133,6 +133,25 @@ def load_image(path: Path, resize: int = None, **kwargs) -> torch.Tensor:
     return numpy_image_to_torch(image)
 
 
+class Extractor(torch.nn.Module):
+    def __init__(self, **conf):
+        super().__init__()
+        self.conf = SimpleNamespace(**{**self.default_conf, **conf})
+
+    @torch.no_grad()
+    def extract(self, img: torch.Tensor, **conf) -> dict:
+        """Perform extraction with online resizing"""
+        if img.dim() == 3:
+            img = img[None]  # add batch dim
+        assert img.dim() == 4 and img.shape[0] == 1
+        shape = img.shape[-2:][::-1]
+        img, scales = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
+        feats = self.forward({"image": img})
+        feats["image_size"] = torch.tensor(shape)[None].to(img).float()
+        feats["keypoints"] = (feats["keypoints"] + 0.5) / scales[None] - 0.5
+        return feats
+
+
 def match_pair(
     extractor,
     matcher,

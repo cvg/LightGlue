@@ -32,7 +32,6 @@
 # Xiaoming Zhao, Xingming Wu, Weihai Chen, Peter C.Y. Chen, Qingsong Xu, and Zhengguo Li
 # Code from https://github.com/Shiaoming/ALIKED
 
-from types import SimpleNamespace
 from typing import Callable, Optional
 
 import torch
@@ -42,7 +41,7 @@ from torch import nn
 from torch.nn.modules.utils import _pair
 from torchvision.models import resnet
 
-from .utils import ImagePreprocessor
+from .utils import Extractor
 
 
 def get_patches(
@@ -609,12 +608,11 @@ class SDDH(nn.Module):
         return descriptors, offsets
 
 
-class ALIKED(nn.Module):
+class ALIKED(Extractor):
     default_conf = {
         "model_name": "aliked-n16",
         "max_num_keypoints": -1,
         "detection_threshold": 0.2,
-        "force_num_keypoints": False,
         "nms_radius": 2,
     }
 
@@ -630,7 +628,6 @@ class ALIKED(nn.Module):
         "aliked-n32": [16, 32, 64, 128, 128, 3, 32],
     }
     preprocess_conf = {
-        **ImagePreprocessor.default_conf,
         "resize": 1024,
         "grayscale": False,
     }
@@ -638,12 +635,8 @@ class ALIKED(nn.Module):
     required_data_keys = ["image"]
 
     def __init__(self, **conf):
-        super().__init__()
-        self.conf = {**self.default_conf, **conf}
-        conf = self.conf = SimpleNamespace(**self.conf)
-        if conf.force_num_keypoints:
-            assert conf.detection_threshold <= 0 and conf.max_num_keypoints > 0
-        # get configurations
+        super().__init__(**conf)  # Update with default configuration.
+        conf = self.conf
         c1, c2, c3, c4, dim, K, M = self.cfgs[conf.model_name]
         conv_types = ["conv", "conv", "dcn", "dcn"]
         conv2D = False
@@ -761,15 +754,3 @@ class ALIKED(nn.Module):
             "descriptors": torch.stack(descriptors),  # B x N x D
             "keypoint_scores": torch.stack(kptscores),  # B x N
         }
-
-    def extract(self, img: torch.Tensor, **conf) -> dict:
-        """Perform extraction with online resizing"""
-        if img.dim() == 3:
-            img = img[None]  # add batch dim
-        assert img.dim() == 4 and img.shape[0] == 1
-        shape = img.shape[-2:][::-1]
-        img, scales = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
-        feats = self.forward({"image": img})
-        feats["image_size"] = torch.tensor(shape)[None].to(img).float()
-        feats["keypoints"] = (feats["keypoints"] + 0.5) / scales[None] - 0.5
-        return feats
