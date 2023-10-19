@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import torch
 from packaging import version
+from kornia.color import rgb_to_grayscale
 
 try:
     import pycolmap
@@ -89,7 +90,6 @@ class SIFT(Extractor):
 
     preprocess_conf = {
         "resize": 1024,
-        "grayscale": True,
     }
 
     required_data_keys = ["image"]
@@ -185,8 +185,11 @@ class SIFT(Extractor):
         return pred
 
     def forward(self, data: dict) -> dict:
-        device = data["image"].device
-        image = data["image"].cpu()
+        image = data["image"]
+        if image.shape[1] == 3:
+            image = rgb_to_grayscale(image)
+        device = image.device
+        image = image.cpu()
         pred = []
         for k in range(len(image)):
             img = image[k]

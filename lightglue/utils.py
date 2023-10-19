@@ -16,7 +16,6 @@ class ImagePreprocessor:
         "interpolation": "bilinear",
         "align_corners": None,
         "antialias": True,
-        "grayscale": False,  # convert rgb to grayscale
     }
 
     def __init__(self, **conf) -> None:
@@ -36,10 +35,6 @@ class ImagePreprocessor:
                 align_corners=self.conf.align_corners,
             )
         scale = torch.Tensor([img.shape[-1] / w, img.shape[-2] / h]).to(img)
-        if self.conf.grayscale and img.shape[-3] == 3:
-            img = kornia.color.rgb_to_grayscale(img)
-        elif not self.conf.grayscale and img.shape[-3] == 1:
-            img = kornia.color.grayscale_to_rgb(img)
         return img, scale
 
 

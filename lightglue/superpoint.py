@@ -44,6 +44,7 @@
 
 import torch
 from torch import nn
+from kornia.color import rgb_to_grayscale
 
 from .utils import Extractor
 
@@ -113,7 +114,6 @@ class SuperPoint(Extractor):
 
     preprocess_conf = {
         "resize": 1024,
-        "grayscale": True,
     }
 
     required_data_keys = ["image"]
@@ -151,8 +151,12 @@ class SuperPoint(Extractor):
         """Compute keypoints, scores, descriptors for image"""
         for key in self.required_data_keys:
             assert key in data, f"Missing key {key} in data"
+        image = data["image"]
+        if image.shape[1] == 3:
+            image = rgb_to_grayscale(image)
+
         # Shared Encoder
-        x = self.relu(self.conv1a(data["image"]))
+        x = self.relu(self.conv1a(image))
         x = self.relu(self.conv1b(x))
         x = self.pool(x)
         x = self.relu(self.conv2a(x))

@@ -40,6 +40,7 @@ import torchvision
 from torch import nn
 from torch.nn.modules.utils import _pair
 from torchvision.models import resnet
+from kornia.color import grayscale_to_rgb
 
 from .utils import Extractor
 
@@ -629,7 +630,6 @@ class ALIKED(Extractor):
     }
     preprocess_conf = {
         "resize": 1024,
-        "grayscale": False,
     }
 
     required_data_keys = ["image"]
@@ -739,6 +739,8 @@ class ALIKED(Extractor):
 
     def forward(self, data: dict) -> dict:
         image = data["image"]
+        if image.shape[1] == 1:
+            image = grayscale_to_rgb(image)
         feature_map, score_map = self.extract_dense_map(image)
         keypoints, kptscores, scoredispersitys = self.dkd(
             score_map, image_size=data.get("image_size")
