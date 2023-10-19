@@ -37,10 +37,10 @@ from typing import Callable, Optional
 import torch
 import torch.nn.functional as F
 import torchvision
+from kornia.color import grayscale_to_rgb
 from torch import nn
 from torch.nn.modules.utils import _pair
 from torchvision.models import resnet
-from kornia.color import grayscale_to_rgb
 
 from .utils import Extractor
 

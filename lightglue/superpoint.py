@@ -43,8 +43,8 @@
 # Adapted by Remi Pautrat, Philipp Lindenberger
 
 import torch
-from torch import nn
 from kornia.color import rgb_to_grayscale
+from torch import nn
 
 from .utils import Extractor
 
