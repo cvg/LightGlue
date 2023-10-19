@@ -13,6 +13,42 @@ except ImportError:
 from .utils import Extractor
 
 
+def filter_dog_point(points, scales, angles, image_shape, nms_radius, scores=None):
+    h, w = image_shape
+    ij = np.round(points - 0.5).astype(int).T[::-1]
+
+    # Remove duplicate points (identical coordinates).
+    # Pick highest scale or score
+    s = scales if scores is None else scores
+    buffer = np.zeros((h, w))
+    np.maximum.at(buffer, tuple(ij), s)
+    keep = np.where(buffer[tuple(ij)] == s)[0]
+
+    # Pick lowest angle (arbitrary).
+    ij = ij[:, keep]
+    buffer[:] = np.inf
+    o_abs = np.abs(angles[keep])
+    np.minimum.at(buffer, tuple(ij), o_abs)
+    mask = buffer[tuple(ij)] == o_abs
+    ij = ij[:, mask]
+    keep = keep[mask]
+
+    if nms_radius > 0:
+        # Apply NMS on the remaining points
+        buffer[:] = 0
+        buffer[tuple(ij)] = s[keep]  # scores or scale
+
+        local_max = torch.nn.functional.max_pool2d(
+            torch.from_numpy(buffer).unsqueeze(0),
+            kernel_size=nms_radius * 2 + 1,
+            stride=1,
+            padding=nms_radius,
+        ).squeeze(0)
+        is_local_max = buffer == local_max.numpy()
+        keep = keep[is_local_max[tuple(ij)]]
+    return keep
+
+
 def sift_to_rootsift(x: torch.Tensor, eps=1e-6) -> torch.Tensor:
     x = torch.nn.functional.normalize(x, p=1, dim=-1, eps=eps)
     x.clip_(min=eps).sqrt_()
@@ -42,7 +78,7 @@ def run_opencv_sift(features: cv2.Feature2D, image: np.ndarray) -> np.ndarray:
 class SIFT(Extractor):
     default_conf = {
         "rootsift": True,
-        "nms_radius": None,
+        "nms_radius": 0,  # None to disable filtering entirely.
         "max_num_keypoints": 4096,
         "backend": "opencv",  # in {opencv, pycolmap, pycolmap_cpu, pycolmap_cuda}
         "detection_threshold": 0.0066667,  # from COLMAP
@@ -122,20 +158,28 @@ class SIFT(Extractor):
             keypoints, scores, scales, angles, descriptors = run_opencv_sift(
                 self.sift, (image_np * 255.0).astype(np.uint8)
             )
-
         pred = {
             "keypoints": keypoints,
             "scales": scales,
             "oris": angles,
             "descriptors": descriptors,
         }
+        if scores is not None:
+            pred["keypoint_scores"] = scores
+
+        if self.conf.nms_radius is not None:
+            keep = filter_dog_point(
+                keypoints, scales, angles, image_np.shape, self.conf.nms_radius, scores
+            )
+            pred = {k: v[keep] for k, v in pred.items()}
+
         pred = {k: torch.from_numpy(v) for k, v in pred.items()}
         if scores is not None:
             pred["keypoint_scores"] = scores = torch.from_numpy(scores)
             # Keep the k keypoints with highest score
             num_points = self.conf.max_num_keypoints
-            if num_points is not None and len(keypoints) > num_points:
-                indices = torch.topk(scores, num_points).indices
+            if num_points is not None and len(pred["keypoints"]) > num_points:
+                indices = torch.topk(pred["keypoint_scores"], num_points).indices
                 pred = {k: v[indices] for k, v in pred.items()}
 
         return pred
