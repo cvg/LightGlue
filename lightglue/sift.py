@@ -167,15 +167,26 @@ class SIFT(Extractor):
         if scores is not None:
             pred["keypoint_scores"] = scores
 
+        # sometimes pycolmap returns points outside the image. We remove them
+        if self.conf.backend.startswith("pycolmap"):
+            is_inside = (
+                pred["keypoints"] + 0.5 < np.array([image_np.shape[-2:][::-1]])
+            ).all(-1)
+            pred = {k: v[is_inside] for k, v in pred.items()}
+
         if self.conf.nms_radius is not None:
             keep = filter_dog_point(
-                keypoints, scales, angles, image_np.shape, self.conf.nms_radius, scores
+                pred["keypoints"],
+                pred["scales"],
+                pred["oris"],
+                image_np.shape,
+                self.conf.nms_radius,
+                pred["keypoint_scores"],
             )
             pred = {k: v[keep] for k, v in pred.items()}
 
         pred = {k: torch.from_numpy(v) for k, v in pred.items()}
         if scores is not None:
-            pred["keypoint_scores"] = scores = torch.from_numpy(scores)
             # Keep the k keypoints with highest score
             num_points = self.conf.max_num_keypoints
             if num_points is not None and len(pred["keypoints"]) > num_points:
