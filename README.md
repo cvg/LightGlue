@@ -26,8 +26,8 @@
 
 This repository hosts the inference code of LightGlue, a lightweight feature matcher with high accuracy and blazing fast inference. It takes as input a set of keypoints and descriptors for each image and returns the indices of corresponding points. The architecture is based on adaptive pruning techniques, in both network width and depth - [check out the paper for more details](https://arxiv.org/pdf/2306.13643.pdf).
 
-We release pretrained weights of LightGlue with [SuperPoint](https://arxiv.org/abs/1712.07629) and [DISK](https://arxiv.org/abs/2006.13566) local features.
-The training end evaluation code will be released in July in a separate repo. To be notified, subscribe to [issue #6](https://github.com/cvg/LightGlue/issues/6).
+We release pretrained weights of LightGlue with [SuperPoint](https://arxiv.org/abs/1712.07629), [DISK](https://arxiv.org/abs/2006.13566), [ALIKED](https://arxiv.org/abs/2304.03608) and [SIFT](https://www.cs.ubc.ca/~lowe/papers/ijcv04.pdf) local features.
+The training end evaluation code can be found in our training library [glue-factory](https://github.com/cvg/glue-factory/).
 
 ## Installation and demo [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb)
 
@@ -43,14 +43,14 @@ We provide a [demo notebook](demo.ipynb) which shows how to perform feature extr
 Here is a minimal script to match two images:
 
 ```python
-from lightglue import LightGlue, SuperPoint, DISK
+from lightglue import LightGlue, SuperPoint, DISK, SIFT, ALIKED
 from lightglue.utils import load_image, rbd
 
 # SuperPoint+LightGlue
 extractor = SuperPoint(max_num_keypoints=2048).eval().cuda()  # load the extractor
 matcher = LightGlue(features='superpoint').eval().cuda()  # load the matcher
 
-# or DISK+LightGlue
+# or DISK+LightGlue, ALIKED+LightGlue or SIFT+LightGlue
 extractor = DISK(max_num_keypoints=2048).eval().cuda()  # load the extractor
 matcher = LightGlue(features='disk').eval().cuda()  # load the matcher
 
@@ -177,4 +177,4 @@ If you use any ideas from the paper or code from this repo, please consider citi
 
 
 ## License
-The pre-trained weights of LightGlue and the code provided in this repository are released under the [Apache-2.0 license](./LICENSE). [DISK](https://github.com/cvlab-epfl/disk) follows this license as well but SuperPoint follows [a different, restrictive license](https://github.com/magicleap/SuperPointPretrainedNetwork/blob/master/LICENSE) (this includes its pre-trained weights and its [inference file](./lightglue/superpoint.py)).
+The pre-trained weights of LightGlue and the code provided in this repository are released under the [Apache-2.0 license](./LICENSE). [DISK](https://github.com/cvlab-epfl/disk) follows this license as well but SuperPoint follows [a different, restrictive license](https://github.com/magicleap/SuperPointPretrainedNetwork/blob/master/LICENSE) (this includes its pre-trained weights and its [inference file](./lightglue/superpoint.py)). [ALIKED](https://github.com/Shiaoming/ALIKED) was published under a BSD-3-Clause license. 

@@ -16,7 +16,6 @@ class ImagePreprocessor:
         "interpolation": "bilinear",
         "align_corners": None,
         "antialias": True,
-        "grayscale": False,  # convert rgb to grayscale
     }
 
     def __init__(self, **conf) -> None:
@@ -36,10 +35,6 @@ class ImagePreprocessor:
                 align_corners=self.conf.align_corners,
             )
         scale = torch.Tensor([img.shape[-1] / w, img.shape[-2] / h]).to(img)
-        if self.conf.grayscale and img.shape[-3] == 3:
-            img = kornia.color.rgb_to_grayscale(img)
-        elif not self.conf.grayscale and img.shape[-3] == 1:
-            img = kornia.color.grayscale_to_rgb(img)
         return img, scale
 
 
@@ -131,6 +126,25 @@ def load_image(path: Path, resize: int = None, **kwargs) -> torch.Tensor:
     if resize is not None:
         image, _ = resize_image(image, resize, **kwargs)
     return numpy_image_to_torch(image)
+
+
+class Extractor(torch.nn.Module):
+    def __init__(self, **conf):
+        super().__init__()
+        self.conf = SimpleNamespace(**{**self.default_conf, **conf})
+
+    @torch.no_grad()
+    def extract(self, img: torch.Tensor, **conf) -> dict:
+        """Perform extraction with online resizing"""
+        if img.dim() == 3:
+            img = img[None]  # add batch dim
+        assert img.dim() == 4 and img.shape[0] == 1
+        shape = img.shape[-2:][::-1]
+        img, scales = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
+        feats = self.forward({"image": img})
+        feats["image_size"] = torch.tensor(shape)[None].to(img).float()
+        feats["keypoints"] = (feats["keypoints"] + 0.5) / scales[None] - 0.5
+        return feats
 
 
 def match_pair(

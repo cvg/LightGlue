@@ -314,6 +314,7 @@ class LightGlue(nn.Module):
         "name": "lightglue",  # just for interfacing
         "input_dim": 256,  # input descriptor dimension (autoselected from weights)
         "descriptor_dim": 256,
+        "add_scale_ori": False,
         "n_layers": 9,
         "num_heads": 4,
         "flash": True,  # enable FlashAttention if available.
@@ -339,17 +340,36 @@ class LightGlue(nn.Module):
     url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 
     features = {
-        "superpoint": ("superpoint_lightglue", 256),
-        "disk": ("disk_lightglue", 128),
+        "superpoint": {
+            "weights": "superpoint_lightglue",
+            "input_dim": 256,
+        },
+        "disk": {
+            "weights": "disk_lightglue",
+            "input_dim": 128,
+        },
+        "aliked": {
+            "weights": "aliked_lightglue",
+            "input_dim": 128,
+        },
+        "sift": {
+            "weights": "sift_lightglue",
+            "input_dim": 128,
+            "add_scale_ori": True,
+        },
     }
 
     def __init__(self, features="superpoint", **conf) -> None:
         super().__init__()
-        self.conf = {**self.default_conf, **conf}
+        self.conf = conf = SimpleNamespace(**{**self.default_conf, **conf})
         if features is not None:
-            assert features in list(self.features.keys())
-            self.conf["weights"], self.conf["input_dim"] = self.features[features]
-        self.conf = conf = SimpleNamespace(**self.conf)
+            if features not in self.features:
+                raise ValueError(
+                    f"Unsupported features: {features} not in "
+                    f"{{{','.join(self.features)}}}"
+                )
+            for k, v in self.features[features].items():
+                setattr(conf, k, v)
 
         if conf.input_dim != conf.descriptor_dim:
             self.input_proj = nn.Linear(conf.input_dim, conf.descriptor_dim, bias=True)
@@ -357,7 +377,9 @@ class LightGlue(nn.Module):
             self.input_proj = nn.Identity()
 
         head_dim = conf.descriptor_dim // conf.num_heads
-        self.posenc = LearnableFourierPositionalEncoding(2, head_dim, head_dim)
+        self.posenc = LearnableFourierPositionalEncoding(
+            2 + 2 * self.conf.add_scale_ori, head_dim, head_dim
+        )
 
         h, n, d = conf.num_heads, conf.n_layers, conf.descriptor_dim
 
@@ -378,7 +400,7 @@ class LightGlue(nn.Module):
 
         state_dict = None
         if features is not None:
-            fname = f"{conf.weights}_{self.version}.pth".replace(".", "-")
+            fname = f"{conf.weights}_{self.version.replace('.', '-')}.pth"
             state_dict = torch.hub.load_state_dict_from_url(
                 self.url.format(self.version, features), file_name=fname
             )
@@ -452,6 +474,13 @@ class LightGlue(nn.Module):
         kpts0 = normalize_keypoints(kpts0, size0).clone()
         kpts1 = normalize_keypoints(kpts1, size1).clone()
 
+        if self.conf.add_scale_ori:
+            kpts0 = torch.cat(
+                [kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1
+            )
+            kpts1 = torch.cat(
+                [kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1
+            )
         desc0 = data0["descriptors"].detach().contiguous()
         desc1 = data1["descriptors"].detach().contiguous()
 

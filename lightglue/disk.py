@@ -1,13 +1,10 @@
-from types import SimpleNamespace
-
 import kornia
 import torch
-import torch.nn as nn
 
-from .utils import ImagePreprocessor
+from .utils import Extractor
 
 
-class DISK(nn.Module):
+class DISK(Extractor):
     default_conf = {
         "weights": "depth",
         "max_num_keypoints": None,
@@ -18,7 +15,6 @@ class DISK(nn.Module):
     }
 
     preprocess_conf = {
-        **ImagePreprocessor.default_conf,
         "resize": 1024,
         "grayscale": False,
     }
@@ -26,9 +22,7 @@ class DISK(nn.Module):
     required_data_keys = ["image"]
 
     def __init__(self, **conf) -> None:
-        super().__init__()
-        self.conf = {**self.default_conf, **conf}
-        self.conf = SimpleNamespace(**self.conf)
+        super().__init__(**conf)  # Update with default configuration.
         self.model = kornia.feature.DISK.from_pretrained(self.conf.weights)
 
     def forward(self, data: dict) -> dict:
@@ -36,6 +30,8 @@ class DISK(nn.Module):
         for key in self.required_data_keys:
             assert key in data, f"Missing key {key} in data"
         image = data["image"]
+        if image.shape[1] == 1:
+            image = kornia.color.grayscale_to_rgb(image)
         features = self.model(
             image,
             n=self.conf.max_num_keypoints,
@@ -57,15 +53,3 @@ class DISK(nn.Module):
             "keypoint_scores": scores.to(image).contiguous(),
             "descriptors": descriptors.to(image).contiguous(),
         }
-
-    def extract(self, img: torch.Tensor, **conf) -> dict:
-        """Perform extraction with online resizing"""
-        if img.dim() == 3:
-            img = img[None]  # add batch dim
-        assert img.dim() == 4 and img.shape[0] == 1
-        shape = img.shape[-2:][::-1]
-        img, scales = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
-        feats = self.forward({"image": img})
-        feats["image_size"] = torch.tensor(shape)[None].to(img).float()
-        feats["keypoints"] = (feats["keypoints"] + 0.5) / scales[None] - 0.5
-        return feats
