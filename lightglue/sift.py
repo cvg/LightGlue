@@ -181,7 +181,7 @@ class SIFT(Extractor):
                 pred["oris"],
                 image_np.shape,
                 self.conf.nms_radius,
-                pred["keypoint_scores"],
+                scores=pred.get("keypoint_scores"),
             )
             pred = {k: v[keep] for k, v in pred.items()}
 
