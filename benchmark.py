@@ -189,7 +189,7 @@ if __name__ == "__main__":
             image0, image1 = [x.to(device) for x in inputs[pair_name]]
             runtimes = []
             for num_kpts in args.num_keypoints:
-                extractor.conf["max_num_keypoints"] = num_kpts
+                extractor.conf.max_num_keypoints = num_kpts
                 feats0 = extractor.extract(image0)
                 feats1 = extractor.extract(image1)
                 runtime = measure(
@@ -217,7 +217,7 @@ if __name__ == "__main__":
                 image0, image1 = [x.to(device) for x in inputs[pair_name]]
                 runtimes = []
                 for num_kpts in args.num_keypoints:
-                    extractor.conf["max_num_keypoints"] = num_kpts
+                    extractor.conf.max_num_keypoints = num_kpts
                     feats0 = extractor.extract(image0)
                     feats1 = extractor.extract(image1)
                     data = {
