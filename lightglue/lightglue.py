@@ -530,7 +530,7 @@ class LightGlue(nn.Module):
 
             if do_early_stop:
                 token0, token1 = self.token_confidence[i](desc0, desc1)
-                if self.check_if_stop(token0[..., :m, :], token1[..., :n, :], i, m + n):
+                if self.check_if_stop(token0[..., :m], token1[..., :n], i, m + n):
                     break
             if do_point_pruning and desc0.shape[-2] > pruning_th:
                 scores0 = self.log_assignment[i].get_matchability(desc0)
@@ -571,7 +571,7 @@ class LightGlue(nn.Module):
                 "prune1": prune1,
             }
 
-        desc0, desc1 = desc0[..., :m, :], desc1[..., :n, :]
+        desc0, desc1 = desc0[..., :m, :], desc1[..., :n, :]  # remove padding
         scores, _ = self.log_assignment[i](desc0, desc1)
         m0, m1, mscores0, mscores1 = filter_matches(scores, self.conf.filter_threshold)
         matches, mscores = [], []
@@ -600,7 +600,7 @@ class LightGlue(nn.Module):
             prune0 = torch.ones_like(mscores0) * self.conf.n_layers
             prune1 = torch.ones_like(mscores1) * self.conf.n_layers
 
-        pred = {
+        return {
             "matches0": m0,
             "matches1": m1,
             "matching_scores0": mscores0,
@@ -611,8 +611,6 @@ class LightGlue(nn.Module):
             "prune0": prune0,
             "prune1": prune1,
         }
-
-        return pred
 
     def confidence_threshold(self, layer_index: int) -> float:
         """scaled confidence threshold"""
