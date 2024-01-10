@@ -22,8 +22,8 @@ extractor_sift = SIFT(max_num_keypoints=2048).eval().cuda()  # load the extracto
 matcher_sift = LightGlue(features='sift').eval().cuda()  # load the matcher
 
 # load each image as a torch.Tensor on GPU with shape (3,H,W), normalized in [0,1]
-img0_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/imgs/79e6350eac785bc9d523299951c9f919.jpg"
-img1_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/imgs/bf1e19c20a5fb9f198b77f77a8adfd05.jpg"
+img0_path = "/datadrive/codes/opensource/features/ALIKED/assets/test1/3.jpg"
+img1_path = "/datadrive/codes/opensource/features/ALIKED/assets/test1/0.jpg"
 # size = (640, 480)
 image0 = load_image(img0_path).cuda()
 image1 = load_image(img1_path).cuda()
@@ -187,13 +187,13 @@ for name, extractor, matcher in zip(names, extractors, matchers):
     # Calculate the Euclidean distance
     predicted_pts_dst = np.squeeze(predicted_pts_dst)
     reprojection_error = np.sqrt(np.sum((pts_dst - predicted_pts_dst)**2, axis=1))
-    # print("reprojection_error: ", np.sum(reprojection_error))
+    print("reprojection_error: ", np.sum(reprojection_error[0:4]))
     # for i in range(0, 1):
     #     print(pts_dst[i])
     #     print(predicted_pts_dst[i])
     #     print("reprojection_error: ", reprojection_error[i])
     # Average reprojection error  
-    mean_error = np.mean(reprojection_error)
+    mean_error = np.mean(reprojection_error[0:4])
     print("mean_error: ", mean_error)
     errors.append(mean_error)
     

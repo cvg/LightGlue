@@ -247,6 +247,99 @@ def calculate_homography(imgs):
     return Hs
 
 
+def rectify_horizontally(homographies, corners):
+    ## Get edges
+    left_pts, right_pts = [], []
+    for H in homographies:
+        warp_corners = cv2.perspectiveTransform(corners, H).reshape(-1, 2)
+        left_pts.extend([warp_corners[0], warp_corners[3]])
+        right_pts.extend([warp_corners[1], warp_corners[2]])
+    left_pts.sort(key=lambda v: v[0])
+    right_pts.sort(key=lambda v: v[0])
+
+
+    ## Get size
+    l, t, w, h = get_boundingBox(homographies, corners)
+
+
+    ## Get left edges: x = ay + b
+    num = len(left_pts)
+    left_edges = []
+    for i1 in range(num):
+        x1, y1 = left_pts[i1]
+        for i2 in range(i1 + 1, num):
+            x2, y2 = left_pts[i2]
+            if y1 == y2:
+                continue
+            a = (x1 - x2) / (y1 - y2)
+            b = x1 - a * y1
+            valid = True
+            for x, y in left_pts + right_pts:
+                if round(x) < round(y * a + b):
+                    valid = False
+                    break
+            if not valid:
+                continue
+            ## Find area
+            xt = a * t + b
+            xb = a * (t + h) + b
+            left_edges.append((xt, xb))
+
+
+    ## Get bottom edges: x = ay + b
+    num = len(right_pts)
+    right_edges = []
+    for i1 in range(num):
+        x1, y1 = right_pts[i1]
+        for i2 in range(i1 + 1, num):
+            x2, y2 = right_pts[i2]
+            if y1 == y2:
+                continue
+            a = (x1 - x2) / (y1 - y2)
+            b = x1 - a * y1
+            valid = True
+            for x, y in left_pts + right_pts:
+                if round(x) > round(y * a + b):
+                    valid = False
+                    break
+            if not valid:
+                continue
+            ## Find area
+            xt = a * t + b
+            xb = a * (t + h) + b
+            right_edges.append((xt, xb))
+
+
+    ## Find smallest quadrangle
+    r,  b = l + w, t + h
+    polys = []
+    for tl, bl in left_edges:
+        for tr, br in right_edges:
+            if tl >= tr or bl >= br:
+                continue
+            poly = np.float32([tl, t, tr, t, br, b, bl, b]).reshape(4, 1, 2)
+            area = cv2.contourArea(poly)
+            polys.append((area, (tl, bl, tr, br)))
+    if not polys:
+        return homographies
+    polys.sort(key=lambda x: x[0])
+    area, poly = polys[0]
+    if area > w * h:
+        return homographies
+
+
+    ## Align both edges
+    tl, bl, tr, br = poly
+    l, r = 0.5 * (tl + bl), 0.5 * (tr + br)
+    src_pts = np.float32([tl, t, tr, t, br, b, bl, b]).reshape(4, 2)
+    dst_pts = np.float32([l, t, r, t, r, b, l, b]).reshape(4, 2)
+    T = cv2.getPerspectiveTransform(src_pts, dst_pts)
+    homographies = [np.dot(T, H) for H in homographies]
+    return homographies
+
+
+
+
 def stitch(req_path):
     req = json.load(open(req_path))
     imgs, Hs, unsorted_names, img_size = parse_req(req)
@@ -265,6 +358,7 @@ def stitch(req_path):
     
     Hs = adjust_by_pov(Hs, corners)
     Hs, l, t, pw, ph = adjust_roi(Hs, corners, 10000)
+    Hs = rectify_horizontally(Hs, corners)
     
     ## Generate panorama
     print("l, t, pw, ph", pw, ph)
@@ -292,8 +386,8 @@ if __name__ == "__main__":
     # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/d1404239-d77e-4b3e-ba9c-dba4e4b954f0_input.json" #BAD
     # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/8c4783df-fc59-48d0-a394-a9cb27fb7a46_input.json" #OK
     # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/1b92ad6b-9ad4-4430-9e07-376fa6aad7bb_input.json" #OK
-    req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/2d3c5d1a-0b08-4908-a9d9-0215be9ec7d1_input.json" #OK
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/dd1798ca-ae6c-4afe-bbb4-97a140a555fe_input.json" #BAD
+    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/2d3c5d1a-0b08-4908-a9d9-0215be9ec7d1_input.json" #OK
+    req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/dd1798ca-ae6c-4afe-bbb4-97a140a555fe_input.json" #BAD
     # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/8c8d8417-6cb6-484c-8631-54df1dbcabf6_input.json" #BAD
     
     stitch(req_path)
