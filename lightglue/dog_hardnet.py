@@ -63,14 +63,14 @@ def run_opencv_sift(features: cv2.Feature2D, image: np.ndarray) -> np.ndarray:
     Returns:
         points: 2D array of keypoints
         scales: 1D array of keypoint scales
-        angles: 1D array of keypoint orientations in degrees
+        angles: 1D array of keypoint orientations in radians
         scores: 1D array of responses
     """
     detections = features.detect(image, None)
     points = np.array([k.pt for k in detections], dtype=np.float32)
     scores = np.array([k.response for k in detections], dtype=np.float32)
     scales = np.array([k.size for k in detections], dtype=np.float32)
-    angles = np.array([k.angle for k in detections], dtype=np.float32)
+    angles = np.deg2rad(np.array([k.angle for k in detections], dtype=np.float32))
     return points, scores, scales, angles
 
 
@@ -198,7 +198,7 @@ class DoGHardNet(Extractor):
                 pred = {k: v[indices] for k, v in pred.items()}
         lafs = laf_from_center_scale_ori(pred["keypoints"].reshape(1, -1, 2),
                       6.0 * pred["scales"].reshape(1, -1, 1, 1),
-                      pred["oris"].reshape(1, -1, 1)).to(device)
+                      torch.rad2deg(pred["oris"]).reshape(1, -1, 1)).to(device)
         self.laf_desc = self.laf_desc.to(device)
         self.laf_desc.descriptor = self.laf_desc.descriptor.eval()
         pred["descriptors"] = self.laf_desc(image[None], lafs).reshape(-1, 128)
