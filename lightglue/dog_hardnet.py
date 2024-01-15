@@ -188,7 +188,7 @@ class DoGHardNet(Extractor):
                 pred["keypoint_scores"],
             )
             pred2 = {k: v[keep] for k, v in pred.items()}
-            if pred2['keypoints'] is not None:
+            if pred2["keypoints"] is not None:
                 pred = pred2
         pred = {k: torch.from_numpy(v).float() for k, v in pred.items()}
         if scores is not None:
@@ -200,8 +200,7 @@ class DoGHardNet(Extractor):
         lafs = laf_from_center_scale_ori(
             pred["keypoints"].reshape(1, -1, 2),
             6.0 * pred["scales"].reshape(1, -1, 1, 1),
-            torch.rad2deg(pred["oris"]).reshape(1, -1, 1)
-        ).to(device)
+            torch.rad2deg(pred["oris"]).reshape(1, -1, 1)).to(device)
         self.laf_desc = self.laf_desc.to(device)
         self.laf_desc.descriptor = self.laf_desc.descriptor.eval()
         pred["descriptors"] = self.laf_desc(image[None], lafs).reshape(-1, 128)
@@ -218,7 +217,7 @@ class DoGHardNet(Extractor):
             img = image[k]
             if im_size is not None:
                 w, h = data["image_size"][k]
-                img = img[:, :h.to(torch.int32), :w.to(torch.int32)]
+                img = img[:, : h.to(torch.int32), : w.to(torch.int32)]
             p = self.extract_single_image(img)
             pred.append(p)
         pred = {k: torch.stack([p[k] for p in pred], 0).to(device) for k in pred[0]}
