@@ -4,8 +4,9 @@ import cv2
 import numpy as np
 import torch
 from kornia.color import rgb_to_grayscale
-from kornia.feature import laf_from_center_scale_ori, LAFDescriptor, HardNet
+from kornia.feature import HardNet, LAFDescriptor, laf_from_center_scale_ori
 from packaging import version
+
 from .utils import Extractor
 
 try:
