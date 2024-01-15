@@ -14,10 +14,9 @@ except ImportError:
     pycolmap = None
 
 
-
 def filter_dog_point(points, scales, angles, image_shape, nms_radius, scores=None):
     if len(scales) == 0:
-        keep =  [True for x in range(len(scales))]
+        keep = [True for x in range(len(scales))]
         return np.array(keep).astype(bool)
     h, w = image_shape
     ij = np.round(points - 0.5).astype(int).T[::-1]
@@ -131,6 +130,7 @@ class DoGHardNet(Extractor):
                 f"Unknown backend: {backend} not in " f"{{{','.join(backends)}}}."
             )
         self.laf_desc = LAFDescriptor(HardNet(True)).eval()
+
     def extract_single_image(self, image: torch.Tensor):
         device = image.device
         image_np = image.cpu().numpy().squeeze(0)
@@ -156,7 +156,7 @@ class DoGHardNet(Extractor):
 
         if len(keypoints) == 0:
             warnings.warn("No keypoints detected")
-            keypoints = np.zeros((1,2)).astype(np.float32)
+            keypoints = np.zeros((1, 2)).astype(np.float32)
             scales = np.ones((1)).astype(np.float32)
             angles = np.zeros((1)).astype(np.float32)
             scores = np.zeros((1)).astype(np.float32)
@@ -196,12 +196,12 @@ class DoGHardNet(Extractor):
             if num_points is not None and len(pred["keypoints"]) > num_points:
                 indices = torch.topk(pred["keypoint_scores"], num_points).indices
                 pred = {k: v[indices] for k, v in pred.items()}
-        lafs = laf_from_center_scale_ori(pred["keypoints"].reshape(1,-1,2),
-                      6.0 * pred["scales"].reshape(1,-1,1, 1),
-                      pred["oris"].reshape(1,-1,1))
+        lafs = laf_from_center_scale_ori(pred["keypoints"].reshape(1, -1, 2),
+                      6.0 * pred["scales"].reshape(1, -1, 1, 1),
+                      pred["oris"].reshape(1, -1, 1)).to(device)
         self.laf_desc = self.laf_desc.to(device)
         self.laf_desc.descriptor = self.laf_desc.descriptor.eval()
-        pred["descriptors"] = self.laf_desc(image[None], lafs.to(device)).reshape(-1, 128)
+        pred["descriptors"] = self.laf_desc(image[None], lafs).reshape(-1, 128)
         return pred
 
     def _forward(self, data: dict) -> dict:
@@ -211,7 +211,6 @@ class DoGHardNet(Extractor):
         device = image.device
         pred = []
         im_size = data.get("image_size").long()
-        #print (im_size)
         for k in range(len(image)):
             img = image[k]
             if im_size is not None:
@@ -221,5 +220,4 @@ class DoGHardNet(Extractor):
             pred.append(p)
         pred = {k: torch.stack([p[k] for p in pred], 0).to(device) for k in pred[0]}
         return pred
-
 
