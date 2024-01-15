@@ -200,7 +200,8 @@ class DoGHardNet(Extractor):
         lafs = laf_from_center_scale_ori(
             pred["keypoints"].reshape(1, -1, 2),
             6.0 * pred["scales"].reshape(1, -1, 1, 1),
-            torch.rad2deg(pred["oris"]).reshape(1, -1, 1)).to(device)
+            torch.rad2deg(pred["oris"]).reshape(1, -1, 1),
+        ).to(device)
         self.laf_desc = self.laf_desc.to(device)
         self.laf_desc.descriptor = self.laf_desc.descriptor.eval()
         pred["descriptors"] = self.laf_desc(image[None], lafs).reshape(-1, 128)
