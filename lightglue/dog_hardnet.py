@@ -197,8 +197,8 @@ class DoGHardNet(Extractor):
                 indices = torch.topk(pred["keypoint_scores"], num_points).indices
                 pred = {k: v[indices] for k, v in pred.items()}
         lafs = laf_from_center_scale_ori(pred["keypoints"].reshape(1, -1, 2),
-                      6.0 * pred["scales"].reshape(1, -1, 1, 1),
-                      torch.rad2deg(pred["oris"]).reshape(1, -1, 1)).to(device)
+                                         6.0 * pred["scales"].reshape(1, -1, 1, 1),
+                                         torch.rad2deg(pred["oris"]).reshape(1, -1, 1)).to(device)
         self.laf_desc = self.laf_desc.to(device)
         self.laf_desc.descriptor = self.laf_desc.descriptor.eval()
         pred["descriptors"] = self.laf_desc(image[None], lafs).reshape(-1, 128)
@@ -220,4 +220,3 @@ class DoGHardNet(Extractor):
             pred.append(p)
         pred = {k: torch.stack([p[k] for p in pred], 0).to(device) for k in pred[0]}
         return pred
-
