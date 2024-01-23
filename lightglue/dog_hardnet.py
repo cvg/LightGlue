@@ -12,7 +12,6 @@ class DoGHardNet(SIFT):
         super().__init__(**conf)
         self.laf_desc = LAFDescriptor(HardNet(True)).eval()
 
-
     def forward(self, data: dict) -> dict:
         image = data["image"]
         if image.shape[1] == 3:
