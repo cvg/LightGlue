@@ -43,7 +43,7 @@ We provide a [demo notebook](demo.ipynb) which shows how to perform feature extr
 Here is a minimal script to match two images:
 
 ```python
-from lightglue import LightGlue, SuperPoint, DISK, SIFT, ALIKED
+from lightglue import LightGlue, SuperPoint, DISK, SIFT, ALIKED, DoGHardNet
 from lightglue.utils import load_image, rbd
 
 # SuperPoint+LightGlue
