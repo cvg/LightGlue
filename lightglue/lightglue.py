@@ -357,6 +357,11 @@ class LightGlue(nn.Module):
             "input_dim": 128,
             "add_scale_ori": True,
         },
+        "doghardnet": {
+            "weights": "doghardnet_lightglue",
+            "input_dim": 128,
+            "add_scale_ori": True,
+        },
     }
 
     def __init__(self, features="superpoint", **conf) -> None:
