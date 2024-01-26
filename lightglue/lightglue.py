@@ -459,7 +459,6 @@ class LightGlue(nn.Module):
                 descriptors: [B x N x D]
                 image: [B x C x H x W] or image_size: [B x 2]
         Output (dict):
-            log_assignment: [B x M+1 x N+1]
             matches0: [B x M]
             matching_scores0: [B x M]
             matches1: [B x N]
