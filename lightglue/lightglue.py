@@ -463,11 +463,11 @@ class LightGlue(nn.Module):
             matching_scores0: [B x M]
             matches1: [B x N]
             matching_scores1: [B x N]
-            matches: List[[Si x 2]],
+            matches: List[[Si x 2]]
             scores: List[[Si]]
-            stop: int,
-            prune0: [B x M],
-            prune1: [B x N] 
+            stop: int
+            prune0: [B x M]
+            prune1: [B x N]
         """
         with torch.autocast(enabled=self.conf.mp, device_type="cuda"):
             return self._forward(data)
