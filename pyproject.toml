@@ -18,7 +18,7 @@ urls = {Repository = "https://github.com/cvg/LightGlue/"}
 dynamic = ["dependencies"]
 
 [project.optional-dependencies]
-dev = ["black", "flake8", "isort"]
+dev = ["black==23.12.1", "flake8", "isort"]
 
 [tool.setuptools]
 packages = ["lightglue"]
