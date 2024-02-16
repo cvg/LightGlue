@@ -459,12 +459,15 @@ class LightGlue(nn.Module):
                 descriptors: [B x N x D]
                 image: [B x C x H x W] or image_size: [B x 2]
         Output (dict):
-            log_assignment: [B x M+1 x N+1]
             matches0: [B x M]
             matching_scores0: [B x M]
             matches1: [B x N]
             matching_scores1: [B x N]
-            matches: List[[Si x 2]], scores: List[[Si]]
+            matches: List[[Si x 2]]
+            scores: List[[Si]]
+            stop: int
+            prune0: [B x M]
+            prune1: [B x N]
         """
         with torch.autocast(enabled=self.conf.mp, device_type="cuda"):
             return self._forward(data)
