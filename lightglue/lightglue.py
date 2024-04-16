@@ -438,6 +438,7 @@ class LightGlue(nn.Module):
                 stacklevel=2,
             )
 
+        torch._inductor.cudagraph_mark_step_begin()
         for i in range(self.conf.n_layers):
             self.transformers[i].masked_forward = torch.compile(
                 self.transformers[i].masked_forward, mode=mode, fullgraph=True
