@@ -14,8 +14,8 @@ extractor_sift = SIFT(max_num_keypoints=2048).eval().cuda()  # load the extracto
 matcher_sift = LightGlue(features='sift').eval().cuda()  # load the matcher
 
 # load each image as a torch.Tensor on GPU with shape (3,H,W), normalized in [0,1]
-img0_path = "/datadrive/codes/opensource/features/ALIKED/assets/test1/0.jpg"
-img1_path = "/datadrive/codes/opensource/features/ALIKED/assets/test1/1.jpg"
+img0_path = "/datadrive/codes/opensource/features/LightGlue/assets/CAPG/3.jpg"
+img1_path = "/datadrive/codes/opensource/features/LightGlue/assets/CAPG/4.jpg"
 # size = (640, 480)
 image0 = load_image(img0_path).cuda()
 image1 = load_image(img1_path).cuda()
@@ -72,6 +72,7 @@ for name, extractor, matcher in zip(names, extractors, matchers):
     h, w = img1.shape[:2]  
     H0 = np.array([[1,0,0],[0,1,0],[0,0,1]]).astype(np.float32)  
     H1 = H0 @ M  
+    print("H1 \n", H1)
     Hs = [H0, H1]  
     x_min = 0  
     x_max = 0  
@@ -116,7 +117,7 @@ for name, extractor, matcher in zip(names, extractors, matchers):
     print("time: ", (t1 - t0))
     
 
-print("extractor ============> sift + brute force")
+print("extractor ============> sift + flann")
 sift = cv2.SIFT_create()
 img0 = cv2.imread(img0_path)
 img1 = cv2.imread(img1_path)
@@ -126,8 +127,8 @@ kp0, des0 = sift.detectAndCompute(img0, None)
 kp1, des1 = sift.detectAndCompute(img1, None)
 # print("kp0: ", kp0)
 
-bf = cv2.BFMatcher()
-matches = bf.knnMatch(des1, des0, k=2)
+flann_matcher = cv2.FlannBasedMatcher()
+matches = flann_matcher.knnMatch(des1, des0, k=2)
 print("matches: ", len(matches))
 
 good = []

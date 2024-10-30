@@ -36,20 +36,20 @@ extractor_aliked = ALIKED(max_num_keypoints=2048).eval().cuda()  # load the extr
 matcher_aliked = LightGlue(features='aliked').eval().cuda()  # load the matcher
 
 
-def calculate_similarity(query_img, gallery_img):
-    query_feat = img_global_feature.extract(image_url=query_img)
-    gallery_feats = []
-    for i in range(len(gallery_img)):
-        if gallery_img[i] == "":
-            gallery_feats.append([-1] * len(query_feat))
+def calculate_similarity(topk_img, warped_query_img):
+    similarity = []
+    for i in range(len(topk_img)):
+        if topk_img[i] == "" or warped_query_img[i] == "":
+            similarity.append(0)
             continue
-        gallery_feats.append(img_global_feature.extract(image_url=gallery_img[i]))
     
-    query_feat = np.array(query_feat).reshape((1, len(query_feat)))
-    gallery_feats = np.array(gallery_feats).reshape((len(gallery_feats), len(gallery_feats[0])))
-    
-    sim = np.dot(query_feat, gallery_feats.T)
-    return sim
+        feat0 = img_global_feature.extract(image_url=warped_query_img[i])
+        feat1 = img_global_feature.extract(image_url=topk_img[i])
+        feat0 = np.array(feat0).reshape((1, len(feat0)))
+        feat1 = np.array(feat1).reshape((1, len(feat1)))
+        sim = np.dot(feat0, feat1.T)
+        similarity.append(sim[0][0])
+    return similarity
 
 
 def get_topk(topn_label, k):
@@ -65,22 +65,6 @@ def get_topk(topn_label, k):
         topk_label.extend(["-1"] * (k - len(topk_label)))
         
     return topk_label
-
-
-def get_topk_crop_urls(topk_label, df_pms):
-    topk_crop_urls = []
-    for i in range(len(topk_label)):
-        if topk_label[i] == -1:
-            topk_crop_urls.append("")
-        else:
-            df_tmp = df_pms[df_pms['SkuId'] == topk_label[i]]
-            # print("df_tmp: ", df_tmp)
-            if df_tmp.shape[0] == 0:
-                topk_crop_urls.append("")
-            else:
-                topk_crop_urls.append(df_tmp['url'].values[0])
-
-    return topk_crop_urls
 
 
 def download_with_retry(index, image_url, img_folder, num_retries=3):
@@ -110,19 +94,16 @@ def download_with_retry(index, image_url, img_folder, num_retries=3):
 
 def main():
     csv_file = "/datadrive/codes/opensource/features/LightGlue/assets/10k/100_url.csv"
-    pms_file = "/datadrive/codes/retail/delfino/data/pmsdata/all/all_pms.csv"
     img_folder = "/datadrive/codes/opensource/features/LightGlue/assets/10k/imgs"
-    aligned_folder = "/datadrive/codes/opensource/features/LightGlue/assets/10k/aligned"
-    
+    aligned_folder = "/datadrive/codes/opensource/features/LightGlue/assets/10k/aligned"    
     df0 = pd.read_csv(csv_file)
-    df_pms = pd.read_csv(pms_file)
-    df_pms_simple = df_pms[['SkuId', 'url']]
-    # print("pms simple: ", df_pms_simple.shape, df_pms_simple.columns, df_pms_simple.dtypes)
+    os.makedirs(aligned_folder, exist_ok=True)
     
     t_total = 0
     k = 5
-    m = 1
+    m = 93
     
+    df_target = df0.copy()
     df_target = df0.iloc[m:m+1].copy()
     rerank_label_list = []
     rerank_score_list = []
@@ -141,19 +122,17 @@ def main():
         topk_label = get_topk(topn_label, k)
         topk_label = [int(x) for x in topk_label]
         topk_url = topn_url[0:k]
-        print("topk_label: ", topk_label, topk_url)
-        
-        # get topk crop urls
-        topk_crop_urls = get_topk_crop_urls(topk_label, df_pms_simple)
-        # print("topk_crop_urls: ", topk_crop_urls)
+        print("topk_label: ", topk_label)
+        # print("topk_url: ", topk_url)
         
         # download crop images
         topk_crop_paths = []
-        for i in range(len(topk_crop_urls)):
-            if topk_crop_urls[i] == "":
+        i = 0
+        for i in range(len(topk_url)):
+            if topk_url[i] == "":
                 topk_crop_paths.append("")
                 continue
-            crop_path = download_with_retry(topk_label[i], topk_crop_urls[i], img_folder, 5)
+            crop_path = download_with_retry(topk_label[i], topk_url[i], img_folder, 5)
             topk_crop_paths.append(crop_path)
         # print("topk_crop_paths: ", topk_crop_paths)
         
@@ -166,6 +145,7 @@ def main():
         # Then calculate the similarity between the warped query image and the gallery image.
         # return the max similarity and the corresponding label.
         warped_query_path = []
+        i = 0
         for i in range(len(topk_crop_paths)):
             query_img = query_path
             gallery_img = topk_crop_paths[i]
@@ -173,7 +153,7 @@ def main():
                 warped_query_path.append("")
                 continue
             
-            img_path = os.path.join(aligned_folder, f"{p_id}_{topk_label[i]}.jpg")
+            img_path = os.path.join(aligned_folder, f"{index}_{i}_{p_id}_{topk_label[i]}.jpg")
             # if os.path.exists(img_path) and os.path.getsize(img_path) > 0:
             #     warped_query_path.append(img_path)
             #     continue
@@ -205,29 +185,42 @@ def main():
             src_pts = np.float32(arr_points1).reshape(-1, 1, 2)
             dst_pts = np.float32(arr_points0).reshape(-1, 1, 2)
             # print("src_pts: ", src_pts.shape)
+            # matched_count = src_pts.shape[0]
+            # if matched_count < 40:
+            #     warped_query_path.append("")
+            #     continue
             
             if src_pts.shape[0] < 4:
                 warped_query_path.append("")
                 continue
+            
             M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            if M is None:
+                warped_query_path.append("")
+                continue
+            
             matchesMask = mask.ravel().tolist()
             # print("matchesMask: ", matchesMask)
             # calculate the number of inliers
             inliers = 0
             inlier_src_pts = []
             inlier_dst_pts = []
+            j = 0
             for j in range(len(matchesMask)):
                 if matchesMask[j] == 1:
                     inliers += 1
                     inlier_src_pts.append(src_pts[j])
                     inlier_dst_pts.append(dst_pts[j])
-            # print("inliers: ", inliers, inliers/len(matchesMask))
+            print("inliers: ", inliers, inliers/len(matchesMask))
+            if inliers < 20:
+                warped_query_path.append("")
+                continue
 
             #stitching  
             img0 = cv2.imread(gallery_img) 
             img1 = cv2.imread(query_img)  
             h, w = img0.shape[:2]  
-
+            # print(h, w, M)
             img_aligned = cv2.warpPerspective(img1, M, (w, h))
             cv2.imwrite(img_path, img_aligned)
             warped_query_path.append(img_path)
@@ -235,12 +228,16 @@ def main():
         # print("warped_query_path: ", warped_query_path)
         
         # calculate similarity
-        sim = calculate_similarity(query_path, warped_query_path)
+        query_img_list = [query_path] * len(topk_crop_paths)
+        sim = calculate_similarity(topk_crop_paths, warped_query_path)
         # print("sim: ", sim)
         max_sim = np.max(sim)
         max_index = np.argmax(sim)
-        rerank_label = topk_label[max_index]
-        # print("max: ", max_sim, max_index)
+        if max_sim < 0.6:
+            rerank_label = topk_label[0]
+        else:
+            rerank_label = topk_label[max_index]
+        print("max: ", sim, max_sim, max_index)
         print("productId: ", p_id, "final label: ", rerank_label, "rerank res: ", rerank_label==p_id)
         
         rerank_label_list.append(rerank_label)

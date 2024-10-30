@@ -13,6 +13,8 @@ import pandas as pd
 from hashlib import md5
 from lightglue import LightGlue, SIFT, ALIKED
 from lightglue.utils import numpy_image_to_torch, rbd
+import glob
+import os
 
 # ALIKED+LightGlue
 extractor_aliked = ALIKED(max_num_keypoints=2048).eval().cuda()  # load the extractor
@@ -22,11 +24,14 @@ matcher_aliked = LightGlue(features='aliked').eval().cuda()  # load the matcher
 extractor_sift = SIFT(max_num_keypoints=2048).eval().cuda()  # load the extractor
 matcher_sift = LightGlue(features='sift').eval().cuda()  # load the matcher
 
+# extractor_aliked = extractor_sift
+# matcher_aliked = matcher_sift
+
 
 logger = loguru.logger
 logger.add("stitch_task.log", format="{time} {level} {message}", level="INFO", rotation="1 MB", compression="zip")
 
-DOWNLOAD_CACHE_DIR = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/imgs"
+DOWNLOAD_CACHE_DIR = "/datadrive/codes/opensource/features/LightGlue/assets/imgs"
 NETWORK_NUM_RETRY = 3
 NETWORK_NUM_THREADS = 4
 
@@ -41,8 +46,10 @@ def parse_jpeg(content):
 
 def download(url, parse_func, num_retry):
     path = Path(DOWNLOAD_CACHE_DIR) / f'{Path(url).name}'
+    print("path: ", path)
 
     if path and path.is_file():
+        print("path is file")
         return parse_func(path.read_bytes())
 
     ## Download
@@ -52,6 +59,7 @@ def download(url, parse_func, num_retry):
             if rsp.status_code == 200:
                 result = parse_func(rsp.content)
                 if path: path.write_bytes(rsp.content)
+                print("write to path: ", path)
                 return result
             else:
                 logger.warning(f'Failed to download {url}: HTTP code = {rsp.status_code}')
@@ -101,7 +109,7 @@ def parse_req(req):
     if is_video_stitching:
         stitching_info = json.loads(req['stitchingInfo'])
         homographies = stitching_info['images']
-        assert num_imgs == len(homographies), f'Invalid homography number {len(homographies)}, expected {num_imgs}'
+        # assert num_imgs == len(homographies), f'Invalid homography number {len(homographies)}, expected {num_imgs}'
         Hs = []
         
         for i, item in enumerate(homographies):
@@ -115,7 +123,7 @@ def parse_req(req):
             Hs.append(H)
 
     else:
-        assert num_imgs == 1 + len(req['pair']), f"Invalid homography number {len(req['pair'])}, expected {num_imgs - 1}"
+        # assert num_imgs == 1 + len(req['pair']), f"Invalid homography number {len(req['pair'])}, expected {num_imgs - 1}"
         Hs = [np.eye(3, 3, dtype=np.float32)]
         for i, pair in enumerate(req['pair']):
             last = pair["image1Index"] if "image1Index" in pair.keys() else 0
@@ -190,7 +198,7 @@ def adjust_roi(homographies, corners, max_size):
 
     ## Get offset and size
     sl, st, sw, sh = get_boundingBox(homographies, corners)
-    logger.info(f'Adjusting RoI of panorama ...')
+    logger.info(f'Adjusting RoI of panorama ...{sl, st, sh, sw}')
 
     ## Rescale
     s = min(max_size / max(sw, sh), 1)
@@ -211,17 +219,16 @@ def calculate_homography(imgs):
         j = i + 1
         img0 = imgs[i]
         img1 = imgs[j]
-        h, w = img1.shape[:2]
         
         t_img0 = numpy_image_to_torch(img0).cuda()
         t_img1 = numpy_image_to_torch(img1).cuda()
             
             # extract local features
-        feats0 = extractor_sift.extract(t_img0)  # auto-resize the image, disable with resize=None
-        feats1 = extractor_sift.extract(t_img1)
+        feats0 = extractor_aliked.extract(t_img0)  # auto-resize the image, disable with resize=None
+        feats1 = extractor_aliked.extract(t_img1)
 
         # match the features
-        matches01 = matcher_sift({'image0': feats0, 'image1': feats1})
+        matches01 = matcher_aliked({'image0': feats0, 'image1': feats1})
         feats0, feats1, matches01 = [rbd(x) for x in [feats0, feats1, matches01]]  # remove batch dimension
         matches = matches01['matches']  # indices with shape (K,2)
         points0 = feats0['keypoints'][matches[..., 0]]  # coordinates in image #0, shape (K,2)
@@ -337,21 +344,139 @@ def rectify_horizontally(homographies, corners):
     homographies = [np.dot(T, H) for H in homographies]
     return homographies
 
+def rectify_vertically(homographies, corners):
+
+
+    ## Get edges
+    top_pts, bottom_pts = [], []
+    for H in homographies:
+        warp_corners = cv2.perspectiveTransform(corners, H).reshape(-1, 2)
+        top_pts.extend([warp_corners[0], warp_corners[1]])
+        bottom_pts.extend([warp_corners[3], warp_corners[2]])
+    top_pts.sort(key=lambda v: v[1])
+    bottom_pts.sort(key=lambda v: v[1])
+
+
+    ## Get size
+    l, t, w, h = get_boundingBox(homographies, corners)
+
+
+    ## Get top edges: y = ax + b
+    top_edges = []
+    num = len(top_pts)
+    for i1 in range(num):
+        x1, y1 = top_pts[i1]
+        for i2 in range(i1 + 1, num):
+            x2, y2 = top_pts[i2]
+            if x1 == x2:
+                continue
+            a = (y1 - y2) / (x1 - x2)
+            b = y1 - a * x1
+            valid = True
+            for x, y in top_pts + bottom_pts:
+                if round(y) < round(x * a + b):
+                    valid = False
+                    break
+            if not valid:
+                continue
+            ## Find area
+            yl = a * l + b
+            yr = a * (l + w) + b
+            top_edges.append((yl, yr))
+
+
+    ## Get bottom edges: y = ax + b
+    num = len(bottom_pts)
+    bottom_edges = []
+    for i1 in range(num):
+        x1, y1 = bottom_pts[i1]
+        for i2 in range(i1 + 1, num):
+            x2, y2 = bottom_pts[i2]
+            if x1 == x2:
+                continue
+            a = (y1 - y2) / (x1 - x2)
+            b = y1 - a * x1
+            valid = True
+            for x, y in top_pts + bottom_pts:
+                if round(y) > round(x * a + b):
+                    valid = False
+                    break
+            if not valid:
+                continue
+            ## Find area
+            yl = a * l + b
+            yr = a * (l + w) + b
+            bottom_edges.append((yl, yr))
+
+
+    ## Find smallest quadrangle
+    r,  b = l + w, t + h
+    polys = []
+    for tl, tr in top_edges:
+        for bl, br in bottom_edges:
+            if tl >= bl or tr >= br:
+                continue
+            poly = np.float32([l, tl, r, tr, r, br, l, bl]).reshape(4, 1, 2)
+            area = cv2.contourArea(poly)
+            polys.append((area, (tl, tr, bl, br)))
+    if not polys:
+        return homographies
+    polys.sort(key=lambda x: x[0])
+    area, poly = polys[0]
+    if area > w * h:
+        return homographies
+
+
+    ## Align both edges
+    tl, tr, bl, br = poly
+    t, b = 0.5 * (tl + tr), 0.5 * (bl + br)
+    src_pts = np.float32([l, tl, r, tr, r, br, l, bl]).reshape(4, 2)
+    dst_pts = np.float32([l, t, r, t, r, b, l, b]).reshape(4, 2)
+    T = cv2.getPerspectiveTransform(src_pts, dst_pts)
+    homographies = [np.dot(T, H) for H in homographies]
+    return homographies
 
 
 
-def stitch(req_path):
-    req = json.load(open(req_path))
-    imgs, Hs, unsorted_names, img_size = parse_req(req)
+def sort_key_func(item):  
+    base_name = os.path.basename(item)  # get file name with extension  
+    num = os.path.splitext(base_name)[0]  # remove extension  
+    return int(num)  
+
+def read_local_imgs(img_path):
+    imgs = []
+    img_files = glob.glob(img_path + "/*.jpg")
+    img_files = sorted(img_files, key=sort_key_func)
+
+    sep = 2
+    img_files_new = []
+    for i in range(len(img_files)):
+        if i % sep == 0:
+            img_files_new.append(img_files[i])
+    # img_files = img_files[:2]
+    print("img_files_new: ", len(img_files_new))
+    for img_file in img_files_new:
+        img = cv2.imread(img_file)
+        imgs.append(img)
+    return imgs
+
+
+def stitch_local(img_folder):
+    imgs= read_local_imgs(img_folder)
+    print("imgs: ", len(imgs))
+    img_size = imgs[0].shape[1], imgs[0].shape[0]
     # print("Hs: ", Hs)
+    t0 = time.time()
     new_Hs = calculate_homography(imgs)
+    t1 = time.time()
+    print("time: ", t1-t0)
     # print("new_Hs: ", new_Hs)
     w, h = img_size
     print("w,h: ", w,h)
     corners = np.float32([0, 0, w, 0, w, h, 0, h]).reshape(4, 1, 2)
     
     Hs = new_Hs.copy()
-    ## Rescale homography with original image size
+    # Rescale homography with original image size
     # s = 360 / max(h, w)
     # offset = np.float32([s, 0, 0, 0, s, 0, 0, 0, 1]).reshape(3, 3)
     # Hs = [np.dot(H, offset) for H in Hs]
@@ -359,10 +484,48 @@ def stitch(req_path):
     Hs = adjust_by_pov(Hs, corners)
     Hs, l, t, pw, ph = adjust_roi(Hs, corners, 10000)
     Hs = rectify_horizontally(Hs, corners)
+    Hs = rectify_vertically(Hs, corners)
+    Hs, l, t, pw, ph = adjust_roi(Hs, corners, 10000)
     
     ## Generate panorama
     print("l, t, pw, ph", pw, ph)
-    assert abs(l) < 2 and abs(t) < 2, f'BUG #1 in stitch(): {l}, {t}'
+    # assert abs(l) < 2 and abs(t) < 2, f'BUG #1 in stitch(): {l}, {t}'
+    pano = np.zeros((ph, pw, 3), np.uint8)
+
+    for img, H in zip(imgs, Hs):
+        cv2.warpPerspective(img, H, (pw, ph), pano, borderMode=cv2.BORDER_TRANSPARENT)
+
+    cv2.imwrite("stitch.jpg", pano)
+
+
+def stitch(req_path):
+    req = json.load(open(req_path))
+    imgs, Hs, unsorted_names, img_size = parse_req(req)
+    # print("Hs: ", Hs)
+    t0 = time.time()
+    new_Hs = calculate_homography(imgs)
+    t1 = time.time()
+    print("time: ", t1-t0)
+    # print("new_Hs: ", new_Hs)
+    w, h = img_size
+    print("w,h: ", w,h)
+    corners = np.float32([0, 0, w, 0, w, h, 0, h]).reshape(4, 1, 2)
+    
+    Hs = new_Hs.copy()
+    # Rescale homography with original image size
+    # s = 360 / max(h, w)
+    # offset = np.float32([s, 0, 0, 0, s, 0, 0, 0, 1]).reshape(3, 3)
+    # Hs = [np.dot(H, offset) for H in Hs]
+    
+    Hs = adjust_by_pov(Hs, corners)
+    Hs, l, t, pw, ph = adjust_roi(Hs, corners, 10000)
+    Hs = rectify_horizontally(Hs, corners)
+    Hs = rectify_vertically(Hs, corners)
+    Hs, l, t, pw, ph = adjust_roi(Hs, corners, 10000)
+    
+    ## Generate panorama
+    print("l, t, pw, ph", pw, ph)
+    # assert abs(l) < 2 and abs(t) < 2, f'BUG #1 in stitch(): {l}, {t}'
     pano = np.zeros((ph, pw, 3), np.uint8)
 
     for img, H in zip(imgs, Hs):
@@ -371,24 +534,8 @@ def stitch(req_path):
     cv2.imwrite("stitch.jpg", pano)
 
 if __name__ == "__main__":
-    # req_normal_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/ae52a0b3-4fc2-4cf8-8c5c-61befb8feb54_input.json"
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/c73828ec-d806-433f-90c1-6a2cc28ad80d_input.json" # BAD
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/57370a01-61f3-4614-b079-8d210551dc4f_input.json" #OK
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/ec9866a6-7186-444f-b856-db78ebac2130_input.json" #OK
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/dd429d25-8cde-4562-8a22-9887c524809d_input.json" #BAD
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/42c6c651-36e1-4b64-9a74-3a654a9a204a_input.json" #BAD
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/0d5ea595-91bc-4906-a325-b25b75d8ddad_input.json" #OK
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/779521df-3617-49dd-8c88-c88381bea6e2_input.json" #OK
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/a9b1a4af-b735-4966-b642-0733c0afa617_input.json" #BAD
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/888d3745-6951-48fa-9689-87013ab246f9_input.json" #OK
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/5779be24-2079-4706-a881-8cc17a8a4346_input.json" #BAD
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/d3bed88c-65dd-46ba-8506-f14279ebe8d4_input.json" #OK
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/d1404239-d77e-4b3e-ba9c-dba4e4b954f0_input.json" #BAD
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/8c4783df-fc59-48d0-a394-a9cb27fb7a46_input.json" #OK
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/1b92ad6b-9ad4-4430-9e07-376fa6aad7bb_input.json" #OK
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/2d3c5d1a-0b08-4908-a9d9-0215be9ec7d1_input.json" #OK
-    req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/dd1798ca-ae6c-4afe-bbb4-97a140a555fe_input.json" #BAD
-    # req_path = "/datadrive/codes/opensource/dlfeatures/LightGlue/assets/new/8c8d8417-6cb6-484c-8631-54df1dbcabf6_input.json" #BAD
+    # req_path = "/datadrive/codes/opensource/features/LightGlue/assets/uspg_test_jsons/4c89ccd3-5978-4d74-8764-7daf9d35cdda_input.json"
+    # stitch(req_path)
     
-    stitch(req_path)
+    stitch_local("/datadrive/codes/retail/ultralytics/stitch/output/imgs")
     
