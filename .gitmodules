@@ -1,0 +1,3 @@
+[submodule "LightGlue-ONNX"]
+	path = LightGlue-ONNX
+	url = ./

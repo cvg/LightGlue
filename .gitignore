@@ -3,6 +3,15 @@
 /lightglue/weights/
 *-checkpoint.ipynb
 *.pth
+assets/
+output/
+stitch_hard/
+
+# imgs
+*.jpg
+*.png
+*.jpeg
+*.bmp
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

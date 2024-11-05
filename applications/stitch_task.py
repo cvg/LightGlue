@@ -1,5 +1,4 @@
-from lightglue import LightGlue, SuperPoint, DISK, SIFT, ALIKED
-from lightglue.utils import load_image, rbd
+
 import numpy as np
 import cv2
 import json
@@ -11,10 +10,19 @@ import functools
 from pathlib import Path
 import pandas as pd
 from hashlib import md5
-from lightglue import LightGlue, SIFT, ALIKED
-from lightglue.utils import numpy_image_to_torch, rbd
+
 import glob
 import os
+import sys
+
+sys.path.append("/datadrive/codes/opensource/features/LightGlue")
+
+from lightglue import LightGlue, SuperPoint, DISK, SIFT, ALIKED
+from lightglue.utils import load_image, rbd
+from lightglue import LightGlue, SIFT, ALIKED
+from lightglue.utils import numpy_image_to_torch, rbd
+
+
 
 # ALIKED+LightGlue
 extractor_aliked = ALIKED(max_num_keypoints=2048).eval().cuda()  # load the extractor
@@ -448,7 +456,7 @@ def read_local_imgs(img_path):
     img_files = glob.glob(img_path + "/*.jpg")
     img_files = sorted(img_files, key=sort_key_func)
 
-    sep = 2
+    sep = 1
     img_files_new = []
     for i in range(len(img_files)):
         if i % sep == 0:
