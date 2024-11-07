@@ -11,18 +11,22 @@ import sys
 import os
 import loguru
 from sklearn.cluster import KMeans
+import pandas as pd
+import matplotlib.pyplot as plt
+import tqdm
 
 logger = loguru.logger
 logger.add(sys.stdout, format="{time} {level} {message}", filter="my_module", level="DEBUG")
 
 
 sys.path.append("/datadrive/codes/opensource/features/LightGlue")
-
+sys.path.append("/datadrive/codes/retail/delfino")
 
 from lightglue import LightGlue, SuperPoint, DISK, SIFT, ALIKED
 from lightglue.utils import load_image, rbd, numpy_image_to_torch
 from lightglue.viz2d import plot_images, plot_keypoints, plot_matches, save_plot
 
+from utils.download_crops import download_image_with_retry
 
 
 def filter_points(src_points:np.ndarray, dst_points, img_h, img_w)->np.ndarray:
@@ -111,6 +115,13 @@ def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
     points0 = points0.cpu().numpy()
     points1 = points1.cpu().numpy()
     
+    plot_images([img0, img1])
+    print("points0: ", points0.shape)
+    # plot_keypoints(points0)
+    # plot_keypoints(points1)
+    plot_matches(points0, points1, color='lime', lw=1)
+    save_plot("origin_matches.png")
+    
     # filter the points
     points0, points1 = filter_points(points0, points1, img0.shape[0], img0.shape[1])
     
@@ -136,7 +147,8 @@ def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
     cv2.imwrite("warped_image.png", warped_image)
     
     contours, _ = cv2.findContours(cv2.cvtColor(warped_image, cv2.COLOR_BGR2GRAY), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    img_draw = img1.copy() 
+    img1 = img1[..., ::-1]
+    img_draw = img1.copy()
     # cv2.fillPoly(img_draw, contours[0], (0, 255, 0))
     cv2.fillPoly(img_draw, contours, (0, 255, 0))
     
@@ -151,14 +163,58 @@ def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
     return points0, points1
 
 
+def prepare_input(csv_file:str, img_dir:str):
+    """
+    This function will read the csv file and prepare the input for the match_pair function.
+    """
+    df_input = pd.read_csv(csv_file)
+    print("df_input: ", df_input.head())
+    os.makedirs(img_dir, exist_ok=True)
+    
+    for idx, row in tqdm.tqdm(df_input.iterrows()):
+        try:
+            folder = img_dir
+            store_number = str(row["StoreNum"])
+            
+            folder = os.path.join(folder, store_number)
+            if not os.path.exists(folder):
+                os.makedirs(folder, exist_ok=True)
+            
+            task_group = row['TaskGroupName']
+            task_group.strip()
+            folder = os.path.join(folder, task_group)
+            if not os.path.exists(folder):
+                os.makedirs(folder, exist_ok=True)
+            
+            task_name = row['TaskName']
+            task_name.strip()
+            folder = os.path.join(folder, task_name)
+            if not os.path.exists(folder):
+                os.makedirs(folder, exist_ok=True)
+                
+            img_num = row['Image number']
+            img_name = f"{folder}/{img_num}.jpg"
+            
+            if os.path.exists(img_name):
+                continue
+            img_url = row['Image URL']
+            _, img = download_image_with_retry(img_url)
+            cv2.imwrite(img_name, img)
+        except Exception as e:
+            print("Error: ", e)
+            continue
+
 
 def main():
-    img1_path = "/datadrive/codes/retail/cvtoolkit/download/OSA/Baby - Pampers/Pampers - Diapers/1927cf96a103029a908322d19cd10746.jpg"
-    img0_path = "/datadrive/codes/retail/cvtoolkit/download/OSA/Baby - Pampers/Pampers - Diapers/d74409e54a50968b81d0048919e39113.jpg"
+    csv_file = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/OSA_Original_Image.csv"
+    img_dir = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images"
+    # prepare_input(csv_file, img_dir)
+    
+    img0_path = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Home cleaning/Mr Clean/42.jpg"
+    img1_path = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Home cleaning/Mr Clean/43.jpg"
     img0 = cv2.imread(img0_path)
     img1 = cv2.imread(img1_path)
     match_pair(img0, img1)
-    
 
 if __name__ == "__main__":
     main()
