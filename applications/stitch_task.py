@@ -456,7 +456,7 @@ def read_local_imgs(img_path):
     img_files = glob.glob(img_path + "/*.jpg")
     img_files = sorted(img_files, key=sort_key_func)
 
-    sep = 1
+    sep = 3
     img_files_new = []
     for i in range(len(img_files)):
         if i % sep == 0:
