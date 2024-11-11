@@ -14,6 +14,7 @@ from sklearn.cluster import KMeans
 import pandas as pd
 import matplotlib.pyplot as plt
 import tqdm
+import glob
 
 logger = loguru.logger
 logger.add(sys.stdout, format="{time} {level} {message}", filter="my_module", level="DEBUG")
@@ -27,6 +28,7 @@ from lightglue.utils import load_image, rbd, numpy_image_to_torch
 from lightglue.viz2d import plot_images, plot_keypoints, plot_matches, save_plot
 
 from utils.download_crops import download_image_with_retry
+from utils.faster_infer import TritonClientGRPC, UnitDetector
 
 
 def filter_points(src_points:np.ndarray, dst_points, img_h, img_w)->np.ndarray:
@@ -54,25 +56,25 @@ def filter_points(src_points:np.ndarray, dst_points, img_h, img_w)->np.ndarray:
     print("dst_points: ", dst_points.shape)
     print("src_points: ", src_points.shape)
     
-    # Criteria 3: filter out the outliers after clustering the slope between matched points
-    slopes = (src_points[:,1] - dst_points[:, 1]) / (src_points[:, 0] - dst_points[:, 0])
-    slopes = slopes.reshape(-1, 1)
-    kmeans = KMeans(n_clusters=2, n_init=10).fit(slopes)
+    # # Criteria 3: filter out the outliers after clustering the slope between matched points
+    # slopes = (src_points[:,1] - dst_points[:, 1]) / (src_points[:, 0] - dst_points[:, 0])
+    # slopes = slopes.reshape(-1, 1)
+    # kmeans = KMeans(n_clusters=2, n_init=10).fit(slopes)
 
-    # Get labels and cluster centroids  
-    labels = kmeans.labels_  
-    # centroids = kmeans.cluster_centers_  
+    # # Get labels and cluster centroids  
+    # labels = kmeans.labels_  
+    # # centroids = kmeans.cluster_centers_  
     
-    # Find the centroid index of the largest cluster (which is the main cluster)  
-    counts = np.bincount(labels)  
-    main_cluster_index = np.argmax(counts) 
-    print("main_cluster_index: ", main_cluster_index)
+    # # Find the centroid index of the largest cluster (which is the main cluster)  
+    # counts = np.bincount(labels)  
+    # main_cluster_index = np.argmax(counts) 
+    # print("main_cluster_index: ", main_cluster_index)
     
-    cond = labels == main_cluster_index
-    src_points = src_points[cond]
-    dst_points = dst_points[cond]
-    print("dst_points: ", dst_points.shape)
-    print("src_points: ", src_points.shape)
+    # cond = labels == main_cluster_index
+    # # src_points = src_points[cond]
+    # # dst_points = dst_points[cond]
+    # print("dst_points: ", dst_points.shape)
+    # print("src_points: ", src_points.shape)
 
     valid_points = src_points.shape[0]
     print("Total points: ", total_points, "Valid points: ", valid_points, "Percentage: ", valid_points/total_points)
@@ -104,63 +106,92 @@ def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
     matches01 = matcher_aliked({'image0': features0, 'image1': features1})
     features0, features1, matches01 = [rbd(x) for x in [features0, features1, matches01]]  # remove batch dimension
     matches = matches01['matches']  # indices with shape (K,2)
-    print("matches: ", matches)
     points0 = features0['keypoints'][matches[..., 0]]  # coordinates in image #0, shape (K,2)
     points1 = features1['keypoints'][matches[..., 1]]  # coordinates in image #1, shape (K,2)
 
     t1 = time.time()
-    print("time: ", t1-t0)
+    print("feature & match time: ", t1-t0)
 
     # plot and save the matches
     points0 = points0.cpu().numpy()
     points1 = points1.cpu().numpy()
     
-    plot_images([img0, img1])
-    print("points0: ", points0.shape)
-    # plot_keypoints(points0)
-    # plot_keypoints(points1)
-    plot_matches(points0, points1, color='lime', lw=1)
-    save_plot("origin_matches.png")
+    # plot_images([img0, img1])
+    # print("points0: ", points0.shape)
+    # # plot_keypoints(points0)
+    # # plot_keypoints(points1)
+    # plot_matches(points0, points1, color='lime', lw=1)
+    # save_plot("origin_matches.png")
     
     # filter the points
     points0, points1 = filter_points(points0, points1, img0.shape[0], img0.shape[1])
     
-    plot_images([img0, img1])
-    print("points0: ", points0.shape)
-    # plot_keypoints(points0)
-    # plot_keypoints(points1)
-    plot_matches(points0, points1, color='lime', lw=1)
-    save_plot("matches.png")
+    # plot_images([img0, img1])
+    # print("points0: ", points0.shape)
+    # # plot_keypoints(points0)
+    # # plot_keypoints(points1)
+    # plot_matches(points0, points1, color='lime', lw=1)
+    # save_plot("matches.png")
     
-    # find homography
-    H, _ = cv2.findHomography(points0, points1, cv2.RANSAC, 5.0, maxIters=10000)
-    print("Homography: ", H)
+    if points0.shape[0] < 4:
+        return np.eye(3)
     
-    # find Fundamental matrix
-    F, _ = cv2.findFundamentalMat(points0, points1, cv2.FM_RANSAC, 5.0, 0.99)
-    print("Fundamental Matrix: ", F)
+    try:
+        # find homography
+        H, mask = cv2.findHomography(points0, points1, cv2.RANSAC, 3.0, maxIters=1000)
+        print("Homography: ", H)
+        print("Inliers: ", np.sum(mask))
     
-    # draw the overlapping areas
-    # Apply the homography to the source image  
-    warped_image = cv2.warpPerspective(img0, H, (img1.shape[1], img1.shape[0]))
-    print("warped_image: ", warped_image.shape)
-    cv2.imwrite("warped_image.png", warped_image)
+        # find Fundamental matrix
+        F, _ = cv2.findFundamentalMat(points0, points1, cv2.FM_RANSAC, 5.0, 0.99)
+        print("Fundamental Matrix: ", F)
+        
+        # draw the overlapping areas
+        # Apply the homography to the source image  
+        # warped_image = cv2.warpPerspective(img0, H, (img1.shape[1], img1.shape[0]))
+        # print("warped_image: ", warped_image.shape)
+        # cv2.imwrite("warped_image.png", warped_image)
+        
+        # contours, _ = cv2.findContours(cv2.cvtColor(warped_image, cv2.COLOR_BGR2GRAY), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # img1 = img1[..., ::-1]
+        # img_draw = img1.copy()
+        # # cv2.fillPoly(img_draw, contours[0], (0, 255, 0))
+        # cv2.fillPoly(img_draw, contours, (0, 255, 0))
+        
+        # # merge the images
+        # alpha = 0.7
+        # beta = 1 - alpha
+        # img_draw = cv2.addWeighted(img1, alpha, img_draw, beta, 0)
+        
+        # # Display the image  
+        # cv2.imwrite("overlapping_area.png", img_draw)
+    except Exception as e:
+        print("Error: ", e)
+        return np.eye(3)
     
-    contours, _ = cv2.findContours(cv2.cvtColor(warped_image, cv2.COLOR_BGR2GRAY), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    img1 = img1[..., ::-1]
-    img_draw = img1.copy()
-    # cv2.fillPoly(img_draw, contours[0], (0, 255, 0))
-    cv2.fillPoly(img_draw, contours, (0, 255, 0))
+    return H
+
+
+
+def process_image_series(img_series:np.ndarray):
+    """
+    This function will take a series of images and return the overlapping areas.
+    """
+    count = img_series.shape[0]
+    print("count: ", count)
     
-    # merge the images
-    alpha = 0.7
-    beta = 1 - alpha
-    img_draw = cv2.addWeighted(img1, alpha, img_draw, beta, 0)
+    Hs = []
+    for i in tqdm.tqdm(range(count-1)):
+        img0 = img_series[i]
+        img1 = img_series[i+1]
+        H = match_pair(img0, img1)
+        print("-------------------------------------------------")
+        Hs.append(H)
     
-    # Display the image  
-    cv2.imwrite("overlapping_area.png", img_draw)
+    return Hs
     
-    return points0, points1
+    
+    
 
 
 def prepare_input(csv_file:str, img_dir:str):
@@ -205,16 +236,46 @@ def prepare_input(csv_file:str, img_dir:str):
             continue
 
 
+
+def sort_key_func(item):  
+    base_name = os.path.basename(item)  # get file name with extension  
+    num = os.path.splitext(base_name)[0]  # remove extension  
+    return int(num)  
+
+
+def process_image_folder(img_dir:str):
+    """
+    This function will read the images from the folder and process them.
+    """
+    img_series = []
+    img_paths = []
+    img_paths = glob.glob(img_dir + "/*.jpg")
+    img_paths = sorted(img_paths, key=sort_key_func)
+    print("img_paths: ", img_paths)
+    for img_path in img_paths:
+        img = cv2.imread(img_path)
+        img_series.append(img)
+    
+    Hs = process_image_series(np.array(img_series))
+    print("Hs: ", Hs)
+    return Hs
+
+
 def main():
     csv_file = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/OSA_Original_Image.csv"
     img_dir = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images"
     # prepare_input(csv_file, img_dir)
     
-    img0_path = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Home cleaning/Mr Clean/42.jpg"
-    img1_path = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Home cleaning/Mr Clean/43.jpg"
-    img0 = cv2.imread(img0_path)
-    img1 = cv2.imread(img1_path)
-    match_pair(img0, img1)
+    # img0_path = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Home cleaning/Mr Clean/42.jpg"
+    # img1_path = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Home cleaning/Mr Clean/43.jpg"
+    # img0 = cv2.imread(img0_path)
+    # img1 = cv2.imread(img1_path)
+    # match_pair(img0, img1)
+    
+    img_dir = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Home cleaning/Mr Clean"
+    process_image_folder(img_dir)
+
+
 
 if __name__ == "__main__":
     main()
