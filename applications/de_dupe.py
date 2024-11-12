@@ -74,8 +74,8 @@ def filter_points(src_points:np.ndarray, dst_points, img_h, img_w)->np.ndarray:
     # print("main_cluster_index: ", main_cluster_index)
     
     # cond = labels == main_cluster_index
-    # # src_points = src_points[cond]
-    # # dst_points = dst_points[cond]
+    # src_points = src_points[cond]
+    # dst_points = dst_points[cond]
     # print("dst_points: ", dst_points.shape)
     # print("src_points: ", src_points.shape)
 
@@ -143,11 +143,11 @@ def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
     # save_plot("matches.png")
     
     if points0.shape[0] < 4:
-        return np.eye(3)
+        return np.eye(3), points0, points1
     
     try:
         # find homography
-        H, mask = cv2.findHomography(points0, points1, cv2.RANSAC, 3.0, maxIters=1000)
+        H, mask = cv2.findHomography(points0, points1, cv2.RANSAC, 3.0, maxIters=2000)
         # print("Homography: ", H)
         # print("Inliers: ", np.sum(mask))
     
@@ -157,23 +157,22 @@ def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
         
         # draw the overlapping areas
         # Apply the homography to the source image  
-        warped_image = cv2.warpPerspective(img0, H, (img1.shape[1], img1.shape[0]))
-        print("warped_image: ", warped_image.shape)
-        cv2.imwrite("warped_image_0.png", warped_image)
+        # warped_image = cv2.warpPerspective(img0, H, (img1.shape[1], img1.shape[0]))
+        # print("warped_image: ", warped_image.shape)
+        # cv2.imwrite("warped_image_0.png", warped_image)
         
-        contours, _ = cv2.findContours(cv2.cvtColor(warped_image, cv2.COLOR_BGR2GRAY), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        img1 = img1[..., ::-1]
-        img_draw = img1.copy()
-        cv2.fillPoly(img_draw, contours[0], (0, 255, 0))
+        # contours, _ = cv2.findContours(cv2.cvtColor(warped_image, cv2.COLOR_BGR2GRAY), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # img1 = img1[..., ::-1]
+        # img_draw = img1.copy()
+        # cv2.fillPoly(img_draw, contours[0], (0, 255, 0))
         # cv2.fillPoly(img_draw, contours, (0, 255, 0))
         
         # # merge the images
-        alpha = 0.7
-        beta = 1 - alpha
-        img_draw = cv2.addWeighted(img1, alpha, img_draw, beta, 0)
-        
+        # alpha = 0.7
+        # beta = 1 - alpha
+        # img_draw = cv2.addWeighted(img1, alpha, img_draw, beta, 0)
         # # Display the image  
-        cv2.imwrite("overlapping_area_0.png", img_draw)
+        # cv2.imwrite("overlapping_area_0.png", img_draw)
         
         # Apply the homography to the destination image
         scale_matrix = np.array([[scale_x, 0, 0], [0, scale_y, 0], [0, 0, 1]])
@@ -186,11 +185,11 @@ def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
         print("Error: ", e)
         return np.eye(3)
     
-    return H_scaled
+    return H_scaled, points0, points1
 
 
 
-def get_homographies(img_series:np.ndarray):
+def get_homographies(img_series:np.ndarray, output_dir:str):
     """
     This function will take a series of images and return the overlapping areas.
     """
@@ -201,9 +200,19 @@ def get_homographies(img_series:np.ndarray):
     for i in tqdm.tqdm(range(count-1)):
         img0 = img_series[i]
         img1 = img_series[i+1]
-        H = match_pair(img0, img1)
-        print("-------------------------------------------------")
+        H, pts0, pts1 = match_pair(img0, img1)
         Hs.append(H)
+        
+        # DEBUG
+        print("points0: ", pts0.shape)
+        if pts0.shape[0] < 1:
+            continue
+        plot_images([cv2.resize(img0, (480, 640)), cv2.resize(img1, (480, 640))])
+        # plot_keypoints(points0)
+        # plot_keypoints(points1)
+        plot_matches(pts0, pts1, color='lime', lw=1)
+        save_plot(f"{output_dir}/matches_{i}_{i+1}.png")
+        print("-------------------------------------------------")
     
     Hs.append(np.eye(3))
     return Hs
@@ -297,8 +306,9 @@ def detect_units(img_series:list, model_name:str, model_version:str):
     img_boxes = []
     for img in img_series:
         try:
+            h,w,c = img.shape
             boxes = unit_detector.detect(img)
-            print("boxes: ", len(boxes))
+            boxes = [[box[0]*w, box[1]*h, box[2]*w, box[3]*h] for box in boxes]
             img_boxes.append(boxes)
         except Exception as e:
             print("Error: ", e)
@@ -308,24 +318,27 @@ def detect_units(img_series:list, model_name:str, model_version:str):
 
 
 def dedupe_units(img_series:list, Hs:list, img_boxes:list):
-    img_box_remained = []
+    box_delete_flags = []
+    box_delete_flags.append([0]*len(img_boxes[0]))
     for i in range(1, len(img_series)):
+        delete_flag = [0]*len(img_boxes[i])
         box_remained = []
         H_prev = Hs[i-1]
         img_boxes_prev = img_boxes[i-1]
         img_boxes_curr = img_boxes[i]
         
         if len(img_boxes_prev) == 0 or len(img_boxes_curr) == 0:
+            box_delete_flags.append(delete_flag)
             print("No boxes in the images.")
             continue
         
         if np.array_equal(H_prev, np.eye(3)):
-            print("No transformation between the images.", H_prev)
+            box_delete_flags.append(delete_flag)
+            print(f"No transformation between {i-1} and {i}")
             continue
         
         # get the warped image and the contour
         img_warped = cv2.warpPerspective(img_series[i-1], H_prev, (img_series[i].shape[1], img_series[i].shape[0]))
-        print("img_warped: ", img_warped.shape)
         cv2.imwrite("img_warped.png", img_warped)
         contours, _ = cv2.findContours(cv2.cvtColor(img_warped, cv2.COLOR_BGR2GRAY), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
@@ -353,7 +366,6 @@ def dedupe_units(img_series:list, Hs:list, img_boxes:list):
                 if area > max_area:
                     max_area = area
                     contour = c
-        print("contour: ", contour.shape)
         
         # get the bounding box of the contour
         x, y, w, h = cv2.boundingRect(contour)
@@ -363,60 +375,52 @@ def dedupe_units(img_series:list, Hs:list, img_boxes:list):
         
         # get the boxes in the current image
         box_to_dedupe = []
-        for box in img_boxes_curr:
+        for k, box in enumerate(img_boxes_curr):
             x1, y1, x2, y2 = box
-            x1, x2 = x1*img_series[i].shape[1], x2*img_series[i].shape[1]
-            y1, y2 = y1*img_series[i].shape[0], y2*img_series[i].shape[0]
             img_countor_iof = iof([x1, y1, x2, y2], [x, y, x+w, y+h])
-            print("img_countor_iof: ", img_countor_iof)
             if img_countor_iof > 0.99:
+                delete_flag[k] = 1
                 continue
             elif img_countor_iof < 0.01:
-                box_remained.append(box)
+                delete_flag[k] = 0
             else:
+                delete_flag[k] = 1
                 cv2.rectangle(img_draw, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                box_to_dedupe.append(box)
+                box_to_dedupe.append(i)
         cv2.imwrite("overlapping_area_3.png", img_draw)
         print("box_to_dedupe: ", len(box_to_dedupe), "box_remained: ", len(box_remained))
         
         warped_boxes = []
-        for box in box_to_dedupe:
-            x1, y1, x2, y2 = box
-            x1, x2 = x1*img_series[i].shape[1], x2*img_series[i].shape[1]
-            y1, y2 = y1*img_series[i].shape[0], y2*img_series[i].shape[0]
+        for k in box_to_dedupe:
+            x1, y1, x2, y2 = img_boxes_curr[k]
             H_pre_inv = np.linalg.inv(H_prev)
             warped_box = cv2.perspectiveTransform(np.array([[[x1, y1], [x2, y1], [x2, y2], [x1, y2]]], dtype=np.float32), H_pre_inv)
             warped_boxes.append(warped_box)
         
         # get the intersection over union of the boxes in the previous image
         img0_tmp = img_series[i-1].copy()
-        for origin_box, warped_box in zip(box_to_dedupe, warped_boxes):
+        for box_idx, warped_box in zip(box_to_dedupe, warped_boxes):
             x1, y1 = warped_box[0][0]
             x2, y2 = warped_box[0][2]
-            print("x1, y1, x2, y2: ", x1, y1, x2, y2)
-            cv2.rectangle(img0_tmp, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
+            # print("x1, y1, x2, y2: ", x1, y1, x2, y2)
+            cv2.rectangle(img0_tmp, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 5)
             max_iou = 0
             for box in img_boxes_prev:
-                box = [box[0]*img_series[i-1].shape[1], 
-                       box[1]*img_series[i-1].shape[0], 
-                       box[2]*img_series[i-1].shape[1], 
-                       box[3]*img_series[i-1].shape[0]
-                       ]
                 iou_score = iou([x1, y1, x2, y2], box)
                 if iou_score > max_iou:
                     max_iou = iou_score
                 if max_iou > 0.5:
                     break
-            print("max_iou: ", max_iou)
+            # print("max_iou: ", max_iou)
             if max_iou < 0.5:
                 cv2.rectangle(img0_tmp, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 255), 5)
-                box_remained.append(origin_box)
+                delete_flag[box_idx] = 0
         
+        box_delete_flags.append(delete_flag)
         cv2.imwrite("overlapping_area_4.png", img0_tmp)
-        print("Original boxes: ", len(img_boxes_curr), "Remained boxes: ", len(box_remained))
-        img_box_remained.append(box_remained)
+        print("Original boxes: ", len(img_boxes_curr), "Deleted boxes: ", sum(delete_flag))
         
-    return img_box_remained
+    return box_delete_flags
             
 
 
@@ -433,18 +437,34 @@ def process_image_folder(img_dir:str, model_name:str, model_version:str):
     for img_path in img_paths:
         img = cv2.imread(img_path)
         img_series.append(img)
+        
+    output_dir = os.path.join(img_dir, "output")
+    os.makedirs(output_dir, exist_ok=True)
     
     # get the homographies
-    Hs = get_homographies(np.array(img_series))
-    print("Hs: ", Hs)
+    Hs = get_homographies(np.array(img_series), output_dir)
+    # print("Hs: ", Hs)
     
     # detect the units
     img_boxes = detect_units(img_series, model_name, model_version)
     
     # dedupe the units
-    img_box_remained = dedupe_units(img_series, Hs, img_boxes)
+    box_delete_flags = dedupe_units(img_series, Hs, img_boxes)
+    print("box_delete_flags: ", len(box_delete_flags))
     
-    return (img_series, Hs, img_box_remained)
+    # draw the boxes
+    for i, img in enumerate(img_series):
+        delete_flags = box_delete_flags[i]
+        boxes = img_boxes[i]
+        for j, box in enumerate(boxes):
+            x1, y1, x2, y2 = box
+            if delete_flags[j] == 1:
+                cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 5)
+            else:
+                cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 5)
+            cv2.imwrite(f"{output_dir}/{i}.jpg", img)
+    
+    return (img_series, Hs, box_delete_flags)
 
 
 
@@ -459,7 +479,7 @@ def main():
     # img1 = cv2.imread(img1_path)
     # match_pair(img0, img1)
     
-    img_dir = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Home cleaning/Mr Clean"
+    img_dir = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Oral Care/Crest"
     model_name = "unit_hpc_yolo_v5"
     model_version = "20230107"
     process_image_folder(img_dir, model_name, model_version)
