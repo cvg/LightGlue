@@ -87,47 +87,90 @@ def filter_points(src_points:np.ndarray, dst_points, img_h, img_w)->np.ndarray:
     return src_points, dst_points, valid_points/total_points
 
 
-def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
+def match_pair(img0:np.ndarray, img1:np.ndarray, feature_type:str) -> np.ndarray:
     """
     This function will take two images and return the overlapping areas.
     """
-    # ALIKED+LightGlue
-    extractor_aliked = ALIKED(max_num_keypoints=2048).eval().cuda()  # load the extractor
-    matcher_aliked = LightGlue(features='aliked').eval().cuda()  # load the matcher
-    
-    # img_tmp = img0.copy() # DEBUG
+    t0 = time.time()
     img_w_ori = img0.shape[1]
     img_h_ori = img0.shape[0]
-    size = (480, 640)
-    scale_x = img_w_ori/size[0] # img_h/size_w
-    scale_y = img_h_ori/size[1] # img_w/size_h
-    # print("scale_x: ", scale_x, "scale_y: ", scale_y)
-    img0 = cv2.resize(img0, size)
-    img1 = cv2.resize(img1, size)
-    img0 = img0[..., ::-1]
-    img1 = img1[..., ::-1]
-    t_img0 = numpy_image_to_torch(img0).cuda()
-    t_img1 = numpy_image_to_torch(img1).cuda()
+    if feature_type.upper() == "ALIKED":
+        # ALIKED+LightGlue
+        print("Using ALIKED features.")
+        extractor_aliked = ALIKED(max_num_keypoints=2048).eval().cuda()  # load the extractor
+        matcher_aliked = LightGlue(features='aliked').eval().cuda()  # load the matcher
+        
+        # img_tmp = img0.copy() # DEBUG
+        size = (480, 640)
+        scale_x = img_w_ori/size[0] # img_h/size_w
+        scale_y = img_h_ori/size[1] # img_w/size_h
+        img0 = cv2.resize(img0, size)
+        img1 = cv2.resize(img1, size)
+        img0 = img0[..., ::-1]
+        img1 = img1[..., ::-1]
+        t_img0 = numpy_image_to_torch(img0).cuda()
+        t_img1 = numpy_image_to_torch(img1).cuda()
 
-    t0 = time.time()
-    # extract local features
-    features0 = extractor_aliked.extract(t_img0)  # auto-resize the image, disable with resize=None
-    features1 = extractor_aliked.extract(t_img1)
+        # extract local features
+        features0 = extractor_aliked.extract(t_img0)  # auto-resize the image, disable with resize=None
+        features1 = extractor_aliked.extract(t_img1)
 
-    # match the features
-    matches01 = matcher_aliked({'image0': features0, 'image1': features1})
-    features0, features1, matches01 = [rbd(x) for x in [features0, features1, matches01]]  # remove batch dimension
-    matches = matches01['matches']  # indices with shape (K,2)
-    points0 = features0['keypoints'][matches[..., 0]]  # coordinates in image #0, shape (K,2)
-    points1 = features1['keypoints'][matches[..., 1]]  # coordinates in image #1, shape (K,2)
+        # match the features
+        matches01 = matcher_aliked({'image0': features0, 'image1': features1})
+        features0, features1, matches01 = [rbd(x) for x in [features0, features1, matches01]]  # remove batch dimension
+        matches = matches01['matches']  # indices with shape (K,2)
+        points0 = features0['keypoints'][matches[..., 0]]  # coordinates in image #0, shape (K,2)
+        points1 = features1['keypoints'][matches[..., 1]]  # coordinates in image #1, shape (K,2)
 
+        # plot and save the matches
+        points0 = points0.cpu().numpy()
+        points1 = points1.cpu().numpy()
+        print("ALIKED matches: ", points0.shape, points1.shape)
+    elif feature_type.upper() == "ORB":
+        print("Using ORB features.")
+        # ORB feature matching
+        orb = cv2.ORB_create()
+        img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+        img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+        size = (480, 640)
+        scale_x = img_w_ori/size[0] # img_h/size_w
+        scale_y = img_h_ori/size[1] # img_w/size_h
+        img0 = cv2.resize(img0, size)
+        img1 = cv2.resize(img1, size)
+        kp0, des0 = orb.detectAndCompute(img0, None)
+        kp1, des1 = orb.detectAndCompute(img1, None)
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        matches = bf.match(des0, des1)
+        matches = sorted(matches, key = lambda x:x.distance)
+        good_matches = matches#[m for m in matches if m.distance < 0.75]  # 0.75 is the threshold
+        points0 = np.array([kp0[m.queryIdx].pt for m in good_matches])
+        points1 = np.array([kp1[m.trainIdx].pt for m in good_matches])
+        print("ORB matches: ", len(points0), len(points1), points0.shape, points1.shape)
+    elif feature_type.upper() == "SIFT":
+        # SIFT feature matching
+        print("Using SIFT features.")
+        sift = cv2.SIFT_create()
+        img0 = cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+        img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+        size = (480, 640)
+        scale_x = img_w_ori/size[0] # img_h/size_w
+        scale_y = img_h_ori/size[1] # img_w/size_h
+        img0 = cv2.resize(img0, size)
+        img1 = cv2.resize(img1, size)
+        kp0, des0 = sift.detectAndCompute(img0, None)
+        kp1, des1 = sift.detectAndCompute(img1, None)
+        bf = cv2.BFMatcher()
+        matches = bf.knnMatch(des0, des1, k=2)
+        good_matches = []
+        for m, n in matches:
+            if m.distance < 0.75 * n.distance:
+                good_matches.append(m)
+        points0 = np.array([kp0[m.queryIdx].pt for m in good_matches])
+        points1 = np.array([kp1[m.trainIdx].pt for m in good_matches])
+        print("SIFT matches: ", len(points0), len(points1), points0.shape, points1.shape)
     t1 = time.time()
     print("feature & match time: ", t1-t0)
 
-    # plot and save the matches
-    points0 = points0.cpu().numpy()
-    points1 = points1.cpu().numpy()
-    
     # filter the points
     points0, points1, valid_ratio = filter_points(points0, points1, img0.shape[0], img0.shape[1])
     if valid_ratio < VALIAD_POINTS_THRESHOLD:
@@ -159,7 +202,7 @@ def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
 
 
 
-def get_homographies(img_series:np.ndarray, output_dir:str):
+def get_homographies(img_series:np.ndarray, feature_type:str, output_dir:str):
     """
     This function will take a series of images and return the overlapping areas.
     """
@@ -172,7 +215,7 @@ def get_homographies(img_series:np.ndarray, output_dir:str):
         print("Processing: ", i, i+1)
         img0 = img_series[i]
         img1 = img_series[i+1]
-        H, pts0, pts1 = match_pair(img0, img1)
+        H, pts0, pts1 = match_pair(img0, img1, feature_type)
         Hs.append(H)
         
         # DEBUG
@@ -406,7 +449,7 @@ def dedupe_units(img_series:list, Hs:list, img_boxes:list):
             
 
 
-def process_image_folder(img_dir:str, model_name:str, model_version:str):
+def process_image_folder(img_dir:str, model_name:str, model_version:str, feature_type:str="ALIKED"):
     """
     This function will read the images from the folder and process them.
     """
@@ -424,7 +467,7 @@ def process_image_folder(img_dir:str, model_name:str, model_version:str):
     os.makedirs(output_dir, exist_ok=True)
     
     # get the homographies
-    Hs = get_homographies(np.array(img_series), output_dir)
+    Hs = get_homographies(np.array(img_series), feature_type, output_dir)
     # print("Hs: ", Hs)
     draw_overlap_area(img_series, Hs, output_dir)
     
@@ -464,7 +507,8 @@ def main():
     img_dir = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Fem/AI - Always/Always Fem Pads"
     model_name = "unit_hpc_yolo_v5"
     model_version = "20230107"
-    process_image_folder(img_dir, model_name, model_version)
+    feature_type = "ALIKED" # ALIKED, ORB, SIFT
+    process_image_folder(img_dir, model_name, model_version, feature_type)
 
 
 
