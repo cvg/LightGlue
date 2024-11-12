@@ -31,7 +31,10 @@ from utils.download_crops import download_image_with_retry
 from utils.faster_infer import TritonClientGRPC, UnitDetector
 
 
+# Parameters and constants
 TRT_URL = os.environ.get("TRT_URL", "localhost:8001")
+VALIAD_POINTS_THRESHOLD = 0.6 # % of the points should be valid after filtering
+DEDUPE_IOU_THRESHOLD = 0.5 # % of the points should be valid after filtering
 
 
 def filter_points(src_points:np.ndarray, dst_points, img_h, img_w)->np.ndarray:
@@ -81,7 +84,7 @@ def filter_points(src_points:np.ndarray, dst_points, img_h, img_w)->np.ndarray:
 
     valid_points = src_points.shape[0]
     print("Total points: ", total_points, "Valid points: ", valid_points, "Percentage: ", valid_points/total_points)
-    return src_points, dst_points
+    return src_points, dst_points, valid_points/total_points
 
 
 def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
@@ -126,7 +129,9 @@ def match_pair(img0:np.ndarray, img1:np.ndarray) -> np.ndarray:
     points1 = points1.cpu().numpy()
     
     # filter the points
-    points0, points1 = filter_points(points0, points1, img0.shape[0], img0.shape[1])
+    points0, points1, valid_ratio = filter_points(points0, points1, img0.shape[0], img0.shape[1])
+    if valid_ratio < VALIAD_POINTS_THRESHOLD:
+        return np.eye(3), points0, points1
     
     if points0.shape[0] < 4:
         return np.eye(3), points0, points1
@@ -334,6 +339,8 @@ def dedupe_units(img_series:list, Hs:list, img_boxes:list):
             print(f"No transformation between {i-1} and {i}")
             continue
         
+        print("Deduping: ", i-1, i)
+        
         # get the warped image and the contour
         img_warped = cv2.warpPerspective(img_series[i-1], H_prev, (img_series[i].shape[1], img_series[i].shape[0]))
         contours, _ = cv2.findContours(cv2.cvtColor(img_warped, cv2.COLOR_BGR2GRAY), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -364,9 +371,9 @@ def dedupe_units(img_series:list, Hs:list, img_boxes:list):
             elif img_countor_iof < 0.01:
                 delete_flag[k] = 0
             else:
-                delete_flag[k] = 1
-                box_to_dedupe.append(i)
-        print("box_to_dedupe: ", len(box_to_dedupe), "box_remained: ", len(box_remained))
+                delete_flag[k] = 0
+                box_to_dedupe.append(k)
+        # print("box_to_dedupe: ", len(box_to_dedupe), "box_remained: ", delete_flag.count(0))
         
         warped_boxes = []
         for k in box_to_dedupe:
@@ -377,6 +384,7 @@ def dedupe_units(img_series:list, Hs:list, img_boxes:list):
         
         # get the intersection over union of the boxes in the previous image
         for box_idx, warped_box in zip(box_to_dedupe, warped_boxes):
+            # print("warped_box: ", warped_box)
             x1, y1 = warped_box[0][0]
             x2, y2 = warped_box[0][2]
             # print("x1, y1, x2, y2: ", x1, y1, x2, y2)
@@ -385,11 +393,11 @@ def dedupe_units(img_series:list, Hs:list, img_boxes:list):
                 iou_score = iou([x1, y1, x2, y2], box)
                 if iou_score > max_iou:
                     max_iou = iou_score
-                if max_iou > 0.5:
+                if max_iou > DEDUPE_IOU_THRESHOLD:
                     break
             # print("max_iou: ", max_iou)
-            if max_iou < 0.5:
-                delete_flag[box_idx] = 0
+            if max_iou > DEDUPE_IOU_THRESHOLD:
+                delete_flag[box_idx] = 1
         
         box_delete_flags.append(delete_flag)
         print("Original boxes: ", len(img_boxes_curr), "Deleted boxes: ", sum(delete_flag))
@@ -425,7 +433,6 @@ def process_image_folder(img_dir:str, model_name:str, model_version:str):
     
     # dedupe the units
     box_delete_flags = dedupe_units(img_series, Hs, img_boxes)
-    print("box_delete_flags: ", len(box_delete_flags))
     
     # draw the boxes
     for i, img in enumerate(img_series):
@@ -454,7 +461,7 @@ def main():
     # img1 = cv2.imread(img1_path)
     # match_pair(img0, img1)
     
-    img_dir = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Baby - Pampers/Pampers - Diapers"
+    img_dir = "/datadrive/codes/opensource/features/LightGlue/data/dedupe/osa_images/2488/Fem/AI - Always/Always Fem Pads"
     model_name = "unit_hpc_yolo_v5"
     model_version = "20230107"
     process_image_folder(img_dir, model_name, model_version)
