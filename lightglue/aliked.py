@@ -258,7 +258,7 @@ class DKD(nn.Module):
                 scoredispersitys.append(kptscore)  # for jit.script compatability
                 kptscores.append(kptscore)
 
-        return keypoints, scoredispersitys, kptscores
+        return keypoints, kptscores, scoredispersitys
 
 
 class InputPadder(object):
