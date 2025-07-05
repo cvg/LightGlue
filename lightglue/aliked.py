@@ -682,9 +682,11 @@ class ALIKED(Extractor):
             radius=conf.nms_radius,
             top_k=-1 if conf.detection_threshold > 0 else conf.max_num_keypoints,
             scores_th=conf.detection_threshold,
-            n_limit=conf.max_num_keypoints
-            if conf.max_num_keypoints > 0
-            else self.n_limit_max,
+            n_limit=(
+                conf.max_num_keypoints
+                if conf.max_num_keypoints > 0
+                else self.n_limit_max
+            ),
         )
 
         state_dict = torch.hub.load_state_dict_from_url(
