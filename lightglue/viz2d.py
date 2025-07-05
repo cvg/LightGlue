@@ -39,6 +39,20 @@ def cm_prune(x_):
     return cm_BlRdGn(norm_x)
 
 
+def cm_grad2d(xy):
+    """2D grad. colormap: yellow (0, 0) -> green (1, 0) -> red (0, 1) -> blue (1, 1)."""
+    tl = np.array([1.0, 0, 0])  # red
+    tr = np.array([0, 0.0, 1])  # blue
+    ll = np.array([1.0, 1.0, 0])  # yellow
+    lr = np.array([0, 1.0, 0])  # green
+
+    xy = np.clip(xy, 0, 1)
+    x = xy[..., :1]
+    y = xy[..., -1:]
+    rgb = (1 - x) * (1 - y) * ll + x * (1 - y) * lr + x * y * tr + (1 - x) * y * tl
+    return rgb.clip(0, 1)
+
+
 def plot_images(imgs, titles=None, cmaps="gray", dpi=100, pad=0.5, adaptive=True):
     """Plot a set of images horizontally.
     Args:
@@ -49,9 +63,11 @@ def plot_images(imgs, titles=None, cmaps="gray", dpi=100, pad=0.5, adaptive=True
     """
     # conversion to (H, W, 3) for torch.Tensor
     imgs = [
-        img.permute(1, 2, 0).cpu().numpy()
-        if (isinstance(img, torch.Tensor) and img.dim() == 3)
-        else img
+        (
+            img.permute(1, 2, 0).cpu().numpy()
+            if (isinstance(img, torch.Tensor) and img.dim() == 3)
+            else img
+        )
         for img in imgs
     ]
 
@@ -122,7 +138,10 @@ def plot_matches(kpts0, kpts1, color=None, lw=1.5, ps=4, a=1.0, labels=None, axe
         kpts1 = kpts1.cpu().numpy()
     assert len(kpts0) == len(kpts1)
     if color is None:
-        color = matplotlib.cm.hsv(np.random.rand(len(kpts0))).tolist()
+        kpts_norm = (kpts0 - kpts0.min(axis=0, keepdims=True)) / np.ptp(
+            kpts0, axis=0, keepdims=True
+        )
+        color = cm_grad2d(kpts_norm)  # gradient color
     elif len(color) > 0 and not isinstance(color[0], (tuple, list)):
         color = [color] * len(kpts0)
 
