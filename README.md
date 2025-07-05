@@ -11,10 +11,11 @@
     <p>ICCV 2023</p>
     <a href="https://arxiv.org/pdf/2306.13643.pdf" align="center">Paper</a> | 
     <a href="https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb" align="center">Colab</a> | 
-    <a href="https://psarlin.com/assets/LightGlue_ICCV2023_poster_compressed.pdf" align="center">Poster</a> | 
-    <a href="https://github.com/cvg/glue-factory" align="center">Train your own!</a>
+    <a href="https://huggingface.co/spaces/ETH-CVG/LightGlue" align="center">🤗 Demo </a> | 
+    <a href="https://psarlin.com/doc/LightGlue_ICCV2023_poster_compressed.pdf" align="center">Poster</a> | 
+    <a href="https://github.com/cvg/glue-factory" align="center"> ⚙️ Train your own</a>
   </h2>
-  
+
 </p>
 <p align="center">
     <a href="https://arxiv.org/abs/2306.13643"><img src="assets/easy_hard.jpg" alt="example" width=80%></a>
@@ -29,7 +30,9 @@ This repository hosts the inference code of LightGlue, a lightweight feature mat
 We release pretrained weights of LightGlue with [SuperPoint](https://arxiv.org/abs/1712.07629), [DISK](https://arxiv.org/abs/2006.13566), [ALIKED](https://arxiv.org/abs/2304.03608) and [SIFT](https://www.cs.ubc.ca/~lowe/papers/ijcv04.pdf) local features.
 The training and evaluation code can be found in our library [glue-factory](https://github.com/cvg/glue-factory/).
 
-## Installation and demo [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb)
+LightGlue is now part of 🤗 [Hugging Face Transformers](https://huggingface.co/docs/transformers/main/en/model_doc/lightglue) (credit to [@sbucaille](https://huggingface.co/stevenbucaille)!). It enables easy inference in a few lines of Python code, using `pip install transformers` ([model card](https://huggingface.co/ETH-CVG/lightglue_superpoint)).
+
+## Installation and demo [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/cvg/LightGlue/blob/main/demo.ipynb) [![](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/ETH-CVG/LightGlue) 
 
 Install this repo using pip:
 
