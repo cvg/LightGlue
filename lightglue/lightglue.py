@@ -380,6 +380,14 @@ class LightGlue(nn.Module):
             "input_dim": 256,
             "url": "https://github.com/xuelunshen/gim/raw/refs/heads/main/weights/gim_lightglue_100h.ckpt",  # noqa: E501
         },
+        "minima_superpoint": {
+            # Source: https://github.com/LSXI7/MINIMA
+            # Paper: https://arxiv.org/pdf/2412.19412
+            # License: https://github.com/LSXI7/MINIMA/blob/main/LICENSE (Apache License)    # noqa: E501
+            "weights": "minima_superpoint_lightglue",
+            "input_dim": 256,
+            "url": "https://github.com/LSXI7/storage/releases/download/MINIMA/minima_lightglue.pth",  # noqa: E501
+        },
     }
 
     def __init__(self, features="superpoint", **conf) -> None:
