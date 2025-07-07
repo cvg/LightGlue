@@ -23,7 +23,7 @@ torch.backends.cudnn.deterministic = True
 
 AMP_CUSTOM_FWD_F32 = (
     torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
-    if hasattr(torch, "amp")
+    if hasattr(torch, "amp") and hasattr(torch.amp, "custom_fwd")
     else torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
 )
 
