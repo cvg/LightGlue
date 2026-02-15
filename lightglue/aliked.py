@@ -42,7 +42,7 @@ from torch import nn
 from torch.nn.modules.utils import _pair
 from torchvision.models import resnet
 
-from .utils import Extractor
+from .utils import Extractor, ImagePreprocessor
 
 
 def get_patches(
@@ -738,6 +738,21 @@ class ALIKED(Extractor):
         score_map = padder.unpad(score_map)
 
         return feature_map, score_map
+
+    def describe(
+        self, keypoints: torch.Tensor, img: torch.Tensor, **conf
+    ) -> torch.Tensor:
+        """Extract descriptors for a set of keypoints."""
+        if img.dim() == 3:
+            img = img[None]  # add batch dim
+        assert img.dim() == 4 and img.shape[0] == 1
+        w, h = img.shape[-2:][::-1]
+        wh = torch.tensor([w - 1, h - 1], device=img.device)
+        img, _ = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
+        keypoints_n = 2.0 * keypoints / wh[None, None] - 1  # [-1, 1]
+        # Extract dense features on resized img
+        feature_map, _ = self.extract_dense_map(img)
+        return torch.stack(self.desc_head(feature_map, keypoints_n)[0])
 
     def forward(self, data: dict) -> dict:
         image = data["image"]
