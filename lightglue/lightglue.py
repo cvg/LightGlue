@@ -346,7 +346,7 @@ class LightGlue(nn.Module):
     required_data_keys = ["image0", "image1"]
 
     version = "v0.1_arxiv"
-    url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
+    url = "https://github.com/cvg/LightGlue/releases/download/{}/{}.pth"
 
     features = {
         "superpoint": {
@@ -359,6 +359,10 @@ class LightGlue(nn.Module):
         },
         "aliked": {
             "weights": "aliked_lightglue",
+            "input_dim": 128,
+        },
+        "raco-aliked": {
+            "weights": "raco_aliked_lightglue",
             "input_dim": 128,
         },
         "sift": {
@@ -416,7 +420,8 @@ class LightGlue(nn.Module):
         if features is not None:
             fname = f"{conf.weights}_{self.version.replace('.', '-')}.pth"
             state_dict = torch.hub.load_state_dict_from_url(
-                self.url.format(self.version, features), file_name=fname
+                self.url.format(self.version, self.conf.weights),
+                file_name=fname,
             )
             self.load_state_dict(state_dict, strict=False)
         elif conf.weights is not None:
