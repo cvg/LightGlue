@@ -132,9 +132,12 @@ class Attention(nn.Module):
             s = q.shape[-1] ** -0.5
             sim = torch.einsum("...id,...jd->...ij", q, k) * s
             if mask is not None:
-                sim.masked_fill(~mask, -float("inf"))
+                sim = sim.masked_fill(~mask, -float("inf"))
             attn = F.softmax(sim, -1)
-            return torch.einsum("...ij,...jd->...id", attn, v)
+            m = torch.einsum("...ij,...jd->...id", attn, v)
+            if mask is not None:
+                m = m.nan_to_num()
+            return m
 
 
 class SelfBlock(nn.Module):
