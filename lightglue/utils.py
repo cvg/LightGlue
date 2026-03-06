@@ -162,4 +162,5 @@ def match_pair(
     data = [feats0, feats1, matches01]
     # remove batch dim and move to target device
     feats0, feats1, matches01 = [batch_to_device(rbd(x), device) for x in data]
+    torch.cuda.synchronize()
     return feats0, feats1, matches01
