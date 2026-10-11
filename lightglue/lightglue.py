@@ -612,8 +612,8 @@ class LightGlue(nn.Module):
             m1_ = torch.full((b, n), -1, device=m1.device, dtype=m1.dtype)
             m0_[:, ind0] = torch.where(m0 == -1, -1, ind1.gather(1, m0.clamp(min=0)))
             m1_[:, ind1] = torch.where(m1 == -1, -1, ind0.gather(1, m1.clamp(min=0)))
-            mscores0_ = torch.zeros((b, m), device=mscores0.device)
-            mscores1_ = torch.zeros((b, n), device=mscores1.device)
+            mscores0_ = mscores0.new_zeros((b, m))
+            mscores1_ = mscores1.new_zeros((b, n))
             mscores0_[:, ind0] = mscores0
             mscores1_[:, ind1] = mscores1
             m0, m1, mscores0, mscores1 = m0_, m1_, mscores0_, mscores1_
