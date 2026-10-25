@@ -221,7 +221,7 @@ class SuperPoint(Extractor):
         ]
 
         return {
-            "keypoints": torch.stack(keypoints, 0),
+            "keypoints": torch.stack(keypoints, 0) + self.coords_offset(),
             "keypoint_scores": torch.stack(scores, 0),
             "descriptors": torch.stack(descriptors, 0).transpose(-1, -2).contiguous(),
         }

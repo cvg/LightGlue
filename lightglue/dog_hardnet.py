@@ -38,4 +38,5 @@ class DoGHardNet(SIFT):
             p["descriptors"] = self.laf_desc(img[None], lafs).reshape(-1, 128)
             pred.append(p)
         pred = {k: torch.stack([p[k] for p in pred], 0).to(device) for k in pred[0]}
+        pred["keypoints"] = pred["keypoints"] + self.coords_offset()
         return pred

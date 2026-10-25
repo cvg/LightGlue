@@ -769,7 +769,8 @@ class ALIKED(Extractor):
         # no padding required
         # we can set detection_threshold=-1 and conf.max_num_keypoints > 0
         return {
-            "keypoints": wh * (torch.stack(keypoints) + 1) / 2.0,  # B x N x 2
+            "keypoints": wh * (torch.stack(keypoints) + 1) / 2.0
+            + self.coords_offset(),  # B x N x 2
             "descriptors": torch.stack(descriptors),  # B x N x D
             "keypoint_scores": torch.stack(kptscores),  # B x N
         }

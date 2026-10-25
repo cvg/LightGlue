@@ -133,6 +133,20 @@ class Extractor(torch.nn.Module):
         super().__init__()
         # Patch origin --> default to center of pixel
         self.conf = SimpleNamespace(**{"origin": "center", **self.default_conf, **conf})
+        if self.conf.origin not in ("center", "corner"):
+            raise ValueError(f"Unknown origin: {self.conf.origin}")
+
+    def coords_offset(self) -> float:
+        """Return the offset to apply to keypoints to convert from pixel center to pixel corner"""
+        return 0.5 if self.conf.origin == "corner" else 0.0
+
+    def scale_keypoints(
+        self, keypoints: torch.Tensor, scales: torch.Tensor
+    ) -> torch.Tensor:
+        """Scale keypoints by a scale factor"""
+        if self.conf.origin == "corner":
+            return keypoints / scales[None]  # origin at corner of pixel
+        return (keypoints + 0.5) / scales[None] - 0.5  # origin at center of pixel
 
     @torch.no_grad()
     def extract(self, img: torch.Tensor, **conf) -> dict:
@@ -144,15 +158,7 @@ class Extractor(torch.nn.Module):
         img, scales = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
         feats = self.forward({"image": img})
         feats["image_size"] = torch.tensor(shape)[None].to(img).float()
-        keypoints = (feats["keypoints"] + 0.5) / scales[None]
-        if self.conf.origin == "center":
-            # Origin is at the center of the top-left pixel (OpenCV convention).
-            feats["keypoints"] = keypoints - 0.5
-        elif self.conf.origin == "corner":
-            # Origin is at the corner of the top-left pixel (COLMAP convention).
-            feats["keypoints"] = keypoints
-        else:
-            raise ValueError(f"Unknown origin: {self.conf.origin}")
+        feats["keypoints"] = self.scale_keypoints(feats["keypoints"], scales)
         return feats
 
 
