@@ -215,5 +215,5 @@ class SIFT(Extractor):
         pred = {k: torch.stack([p[k] for p in pred], 0).to(device) for k in pred[0]}
         if self.conf.rootsift:
             pred["descriptors"] = sift_to_rootsift(pred["descriptors"])
-        pred["keypoints"] = pred["keypoints"] + self.coords_offset()
+        pred["keypoints"] = pred["keypoints"] + self.coords_offset
         return pred
