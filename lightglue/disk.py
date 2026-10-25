@@ -49,7 +49,7 @@ class DISK(Extractor):
         descriptors = torch.stack(descriptors, 0)
 
         return {
-            "keypoints": keypoints.to(image).contiguous(),
+            "keypoints": keypoints.to(image).contiguous() + self.coords_offset,
             "keypoint_scores": scores.to(image).contiguous(),
             "descriptors": descriptors.to(image).contiguous(),
         }

@@ -131,7 +131,23 @@ def load_image(path: Path, resize: int = None, **kwargs) -> torch.Tensor:
 class Extractor(torch.nn.Module):
     def __init__(self, **conf):
         super().__init__()
-        self.conf = SimpleNamespace(**{**self.default_conf, **conf})
+        # Patch origin --> default to center of pixel
+        self.conf = SimpleNamespace(**{"origin": "center", **self.default_conf, **conf})
+        if self.conf.origin not in ("center", "corner"):
+            raise ValueError(f"Unknown origin: {self.conf.origin}")
+
+    @property
+    def coords_offset(self) -> float:
+        """Offset added to pixel-center keypoints to output them in self.conf.origin."""
+        return 0.5 if self.conf.origin == "corner" else 0.0
+
+    def scale_keypoints(
+        self, keypoints: torch.Tensor, scales: torch.Tensor
+    ) -> torch.Tensor:
+        """Scale keypoints by a scale factor"""
+        if self.conf.origin == "corner":
+            return keypoints / scales[None]  # origin at corner of pixel
+        return (keypoints + 0.5) / scales[None] - 0.5  # origin at center of pixel
 
     @torch.no_grad()
     def extract(self, img: torch.Tensor, **conf) -> dict:
@@ -143,7 +159,7 @@ class Extractor(torch.nn.Module):
         img, scales = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
         feats = self.forward({"image": img})
         feats["image_size"] = torch.tensor(shape)[None].to(img).float()
-        feats["keypoints"] = (feats["keypoints"] + 0.5) / scales[None] - 0.5
+        feats["keypoints"] = self.scale_keypoints(feats["keypoints"], scales)
         return feats
 
 

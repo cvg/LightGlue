@@ -16,7 +16,7 @@ from .utils import Extractor
 
 def filter_dog_point(points, scales, angles, image_shape, nms_radius, scores=None):
     h, w = image_shape
-    ij = np.round(points - 0.5).astype(int).T[::-1]
+    ij = np.round(points).astype(int).T[::-1]  # pixel centres at integers
 
     # Remove duplicate points (identical coordinates).
     # Pick highest scale or score
@@ -123,6 +123,8 @@ class SIFT(Extractor):
                 )
             else:
                 options["max_num_features"] = self.conf.max_num_keypoints
+            if hasattr(pycolmap, "FeatureExtractionOptions"):  # SIFT options nested
+                options = {"sift": options}
             self.sift = pycolmap.Sift(options=options, device=device)
         elif backend == "opencv":
             self.sift = cv2.SIFT_create(
@@ -146,7 +148,7 @@ class SIFT(Extractor):
                 scores = None  # Scores are not exposed by COLMAP anymore.
             else:
                 detections, scores, descriptors = self.sift.extract(image_np)
-            keypoints = detections[:, :2]  # Keep only (x, y).
+            keypoints = detections[:, :2] - 0.5  # (x, y), COLMAP corner -> pixel centre
             scales, angles = detections[:, -2:].T
             if scores is not None and (
                 self.conf.backend == "pycolmap_cpu" or not pycolmap.has_cuda
@@ -154,7 +156,7 @@ class SIFT(Extractor):
                 # Set the scores as a combination of abs. response and scale.
                 scores = np.abs(scores) * scales
         elif self.conf.backend == "opencv":
-            # TODO: Check if opencv keypoints are already in corner convention
+            # OpenCV keypoints are already in pixel-centre coordinates
             keypoints, scores, scales, angles, descriptors = run_opencv_sift(
                 self.sift, (image_np * 255.0).astype(np.uint8)
             )
@@ -213,4 +215,5 @@ class SIFT(Extractor):
         pred = {k: torch.stack([p[k] for p in pred], 0).to(device) for k in pred[0]}
         if self.conf.rootsift:
             pred["descriptors"] = sift_to_rootsift(pred["descriptors"])
+        pred["keypoints"] = pred["keypoints"] + self.coords_offset
         return pred

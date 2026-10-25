@@ -749,7 +749,9 @@ class ALIKED(Extractor):
         w, h = img.shape[-2:][::-1]
         wh = torch.tensor([w - 1, h - 1], device=img.device)
         img, _ = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
-        keypoints_n = 2.0 * keypoints / wh[None, None] - 1  # [-1, 1]
+        keypoints_n = (
+            2.0 * (keypoints - self.coords_offset) / wh[None, None] - 1
+        )  # [-1, 1]
         # Extract dense features on resized img
         feature_map, _ = self.extract_dense_map(img)
         return torch.stack(self.desc_head(feature_map, keypoints_n)[0])
@@ -769,7 +771,8 @@ class ALIKED(Extractor):
         # no padding required
         # we can set detection_threshold=-1 and conf.max_num_keypoints > 0
         return {
-            "keypoints": wh * (torch.stack(keypoints) + 1) / 2.0,  # B x N x 2
+            "keypoints": wh * (torch.stack(keypoints) + 1) / 2.0
+            + self.coords_offset,  # B x N x 2
             "descriptors": torch.stack(descriptors),  # B x N x D
             "keypoint_scores": torch.stack(kptscores),  # B x N
         }
