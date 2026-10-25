@@ -104,8 +104,11 @@ def resize_image(
 
     fn = {"max": max, "min": min}[fn]
     if isinstance(size, int):
+        if size <= 0:
+            raise ValueError(f"Image size must be positive, got {size}")
         scale = size / fn(h, w)
-        h_new, w_new = int(round(h * scale)), int(round(w * scale))
+        h_new = max(1, int(round(h * scale)))
+        w_new = max(1, int(round(w * scale)))
         scale = (w_new / w, h_new / h)
     elif isinstance(size, (tuple, list)):
         h_new, w_new = size
