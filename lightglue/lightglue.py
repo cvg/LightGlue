@@ -132,8 +132,14 @@ class Attention(nn.Module):
             s = q.shape[-1] ** -0.5
             sim = torch.einsum("...id,...jd->...ij", q, k) * s
             if mask is not None:
-                sim.masked_fill(~mask, -float("inf"))
+                valid_rows = mask.any(dim=-1, keepdim=True)
+                sim = sim.masked_fill(~mask, -float("inf"))
+                # Softmax of an entirely masked row is undefined. Match SDPA's
+                # zero output while keeping the backward pass finite.
+                sim = torch.where(valid_rows, sim, torch.zeros_like(sim))
             attn = F.softmax(sim, -1)
+            if mask is not None:
+                attn = torch.where(valid_rows, attn, torch.zeros_like(attn))
             return torch.einsum("...ij,...jd->...id", attn, v)
 
 
