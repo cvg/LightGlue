@@ -137,7 +137,7 @@ class Extractor(torch.nn.Module):
             raise ValueError(f"Unknown origin: {self.conf.origin}")
 
     def coords_offset(self) -> float:
-        """Return the offset to apply to keypoints to convert from pixel center to pixel corner"""
+        """Offset added to pixel-center keypoints to output them in self.conf.origin."""
         return 0.5 if self.conf.origin == "corner" else 0.0
 
     def scale_keypoints(
