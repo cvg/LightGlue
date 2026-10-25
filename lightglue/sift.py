@@ -123,6 +123,8 @@ class SIFT(Extractor):
                 )
             else:
                 options["max_num_features"] = self.conf.max_num_keypoints
+            if hasattr(pycolmap, "FeatureExtractionOptions"):  # SIFT options nested
+                options = {"sift": options}
             self.sift = pycolmap.Sift(options=options, device=device)
         elif backend == "opencv":
             self.sift = cv2.SIFT_create(
