@@ -131,7 +131,8 @@ def load_image(path: Path, resize: int = None, **kwargs) -> torch.Tensor:
 class Extractor(torch.nn.Module):
     def __init__(self, **conf):
         super().__init__()
-        self.conf = SimpleNamespace(**{**self.default_conf, **conf})
+        # Patch origin --> default to center of pixel
+        self.conf = SimpleNamespace(**{"origin": "center", **self.default_conf, **conf})
 
     @torch.no_grad()
     def extract(self, img: torch.Tensor, **conf) -> dict:
@@ -143,7 +144,15 @@ class Extractor(torch.nn.Module):
         img, scales = ImagePreprocessor(**{**self.preprocess_conf, **conf})(img)
         feats = self.forward({"image": img})
         feats["image_size"] = torch.tensor(shape)[None].to(img).float()
-        feats["keypoints"] = (feats["keypoints"] + 0.5) / scales[None] - 0.5
+        keypoints = (feats["keypoints"] + 0.5) / scales[None]
+        if self.conf.origin == "center":
+            # Origin is at the center of the top-left pixel (OpenCV convention).
+            feats["keypoints"] = keypoints - 0.5
+        elif self.conf.origin == "corner":
+            # Origin is at the corner of the top-left pixel (COLMAP convention).
+            feats["keypoints"] = keypoints
+        else:
+            raise ValueError(f"Unknown origin: {self.conf.origin}")
         return feats
 
 
