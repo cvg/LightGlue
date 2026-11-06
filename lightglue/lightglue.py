@@ -423,7 +423,6 @@ class LightGlue(nn.Module):
                 self.url.format(self.version, self.conf.weights),
                 file_name=fname,
             )
-            self.load_state_dict(state_dict, strict=False)
         elif conf.weights is not None:
             path = Path(__file__).parent
             path = path / "weights/{}.pth".format(self.conf.weights)
@@ -436,6 +435,13 @@ class LightGlue(nn.Module):
                 state_dict = {k.replace(*pattern): v for k, v in state_dict.items()}
                 pattern = f"cross_attn.{i}", f"transformers.{i}.cross_attn"
                 state_dict = {k.replace(*pattern): v for k, v in state_dict.items()}
+            if (
+                "confidence_thresholds" in state_dict
+                and state_dict["confidence_thresholds"].shape
+                != self.confidence_thresholds.shape
+            ):
+                # Keep thresholds computed for the requested number of layers.
+                state_dict.pop("confidence_thresholds")
             self.load_state_dict(state_dict, strict=False)
 
         # static lengths LightGlue is compiled for (only used with torch.compile)
