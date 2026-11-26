@@ -69,10 +69,12 @@ def run_opencv_sift(features: cv2.Feature2D, image: np.ndarray) -> np.ndarray:
         descriptors: 1D array of descriptors
     """
     detections, descriptors = features.detectAndCompute(image, None)
-    points = np.array([k.pt for k in detections], dtype=np.float32)
+    points = np.array([k.pt for k in detections], dtype=np.float32).reshape(-1, 2)
     scores = np.array([k.response for k in detections], dtype=np.float32)
     scales = np.array([k.size for k in detections], dtype=np.float32)
     angles = np.deg2rad(np.array([k.angle for k in detections], dtype=np.float32))
+    if descriptors is None:
+        descriptors = np.empty((0, features.descriptorSize()), dtype=np.float32)
     return points, scores, scales, angles, descriptors
 
 
